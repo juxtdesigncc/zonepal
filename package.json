@@ -9,19 +9,16 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@fontsource-variable/inter": "^5.1.0",
     "@next/third-parties": "^14.2.11",
     "@radix-ui/react-slot": "^1.1.0",
-    "add": "^2.0.6",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.462.0",
+    "lucide-react": "^0.441.0",
     "next": "14.2.11",
     "react": "^18",
     "react-dom": "^18",
     "tailwind-merge": "^2.5.2",
-    "tailwindcss-animate": "^1.0.7",
-    "yarn": "^1.22.22"
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0-beta.4",
