@@ -1,6 +1,7 @@
 import { GoogleAnalytics } from "@next/third-parties/google";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import '@fontsource-variable/inter';
 import "./globals.css";
 
 const geistSans = localFont({
