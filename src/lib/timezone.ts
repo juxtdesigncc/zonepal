@@ -23,10 +23,23 @@ export function getTimezoneOffset(timeZone: string): string {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone,
     timeZoneName: 'shortOffset',
-  })
-  const parts = formatter.formatToParts(new Date())
-  const offsetPart = parts.find(part => part.type === 'timeZoneName')
-  return offsetPart?.value || ''
+  });
+  const parts = formatter.formatToParts(new Date());
+  const offsetPart = parts.find(part => part.type === 'timeZoneName')?.value || '';
+  
+  // Ensure consistent formatting for GMT+0
+  if (offsetPart === 'GMT') {
+    return 'GMT+00:00';
+  }
+  
+  // Format other offsets consistently
+  const match = offsetPart.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+  if (match) {
+    const [, sign, hours, minutes = '00'] = match;
+    return `GMT${sign}${hours.padStart(2, '0')}:${minutes}`;
+  }
+  
+  return offsetPart;
 }
 
 // Create a shared timezone database
@@ -49,10 +62,15 @@ export const timezoneDatabase = Intl.supportedValuesOf('timeZone').map(timezone 
   };
 });
 
-// Default timezones using the shared database
-export const defaultTimeZones: TimeZoneInfo[] = [
-  timezoneDatabase.find(tz => tz.ianaName === 'Asia/Hong_Kong'),
-  timezoneDatabase.find(tz => tz.ianaName === 'Australia/Melbourne'),
-  timezoneDatabase.find(tz => tz.ianaName === 'America/Phoenix'),
-  timezoneDatabase.find(tz => tz.ianaName === 'Europe/Sarajevo'),
-].filter((tz): tz is TimeZoneInfo => tz !== undefined); 
+// URL parameter handling
+export function getTimezoneParam(timezones: TimeZoneInfo[]): string {
+  return timezones.map(tz => tz.ianaName).join('-to-');
+}
+
+export function parseTimezoneParam(param: string): string[] {
+  return param.split('-to-');
+}
+
+export function findTimezoneByIana(ianaName: string): TimeZoneInfo | undefined {
+  return timezoneDatabase.find(tz => tz.ianaName === ianaName);
+} 

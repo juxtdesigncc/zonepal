@@ -1,24 +1,38 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, ArrowsUpDownIcon, LinkIcon, MoonIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { TimeZoneInfo, defaultTimeZones, getTimeInTimeZone } from '@/lib/timezone';
+import { TimeZoneInfo, getTimeInTimeZone, findTimezoneByIana, parseTimezoneParam, getTimezoneParam } from '@/lib/timezone';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TimezoneSearch } from '@/components/timezone-search';
 import { Timeline } from '@/components/timezone-timeline';
 
 export default function ZonePal() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [timeZones, setTimeZones] = useState<TimeZoneInfo[]>(() => 
-    defaultTimeZones.map(tz => ({
-      ...tz,
-      ...getTimeInTimeZone(new Date(), tz.ianaName)
-    }))
-  );
+  const [timeZones, setTimeZones] = useState<TimeZoneInfo[]>([]);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
+  // Initialize timezones from URL
+  useEffect(() => {
+    const zParam = searchParams.get('z');
+    if (zParam) {
+      const ianaNames = parseTimezoneParam(zParam);
+      const zones = ianaNames
+        .map(name => findTimezoneByIana(name))
+        .filter((tz): tz is TimeZoneInfo => tz !== undefined)
+        .map(tz => ({
+          ...tz,
+          ...getTimeInTimeZone(selectedDate, tz.ianaName)
+        }));
+      setTimeZones(zones);
+    }
+  }, [searchParams, selectedDate]);
 
   // Update times every minute
   useEffect(() => {
@@ -54,25 +68,51 @@ export default function ZonePal() {
       if (prevZones.some(tz => tz.ianaName === newTimeZone.ianaName)) {
         return prevZones;
       }
-      return [...prevZones, {
+      const updatedZones = [...prevZones, {
         ...newTimeZone,
         ...getTimeInTimeZone(selectedDate, newTimeZone.ianaName)
       }];
+      
+      // Update URL
+      const param = getTimezoneParam(updatedZones);
+      router.push(`/zonepal?z=${param}`);
+      
+      return updatedZones;
     });
   };
 
   const handleRemoveTimeZone = (ianaName: string) => {
-    setTimeZones(prevZones => prevZones.filter(tz => tz.ianaName !== ianaName));
+    setTimeZones(prevZones => {
+      const updatedZones = prevZones.filter(tz => tz.ianaName !== ianaName);
+      
+      // Update URL
+      if (updatedZones.length > 0) {
+        const param = getTimezoneParam(updatedZones);
+        router.push(`/zonepal?z=${param}`);
+      } else {
+        router.push('/zonepal');
+      }
+      
+      return updatedZones;
+    });
   };
 
   const handleSortTimeZones = () => {
-    setTimeZones(prevZones => 
-      [...prevZones].sort((a, b) => {
+    setTimeZones(prevZones => {
+      const sortedZones = [...prevZones].sort((a, b) => {
         const offsetA = parseInt(a.offset);
         const offsetB = parseInt(b.offset);
         return offsetA - offsetB;
-      })
-    );
+      });
+      
+      // Update URL with sorted zones
+      const param = getTimezoneParam(sortedZones);
+      if (sortedZones.length > 0) {
+        router.push(`/zonepal?z=${param}`);
+      }
+      
+      return sortedZones;
+    });
   };
 
   return (
@@ -104,14 +144,8 @@ export default function ZonePal() {
           </Popover>
         </div>
         <div className="flex space-x-2">
-          <Button variant="ghost" size="icon">
-            <CalendarIcon className="h-5 w-5" />
-          </Button>
           <Button variant="ghost" size="icon" onClick={handleSortTimeZones}>
             <ArrowsUpDownIcon className="h-5 w-5" />
-          </Button>
-          <Button variant="ghost" size="icon">
-            <LinkIcon className="h-5 w-5" />
           </Button>
           <Button variant="ghost" size="icon">
             <MoonIcon className="h-5 w-5" />
@@ -120,36 +154,43 @@ export default function ZonePal() {
       </div>
 
       <div className="space-y-6">
-        {timeZones.map((tz) => (
-          <div key={tz.ianaName} className="bg-white rounded-lg p-6 shadow-sm relative group">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={() => handleRemoveTimeZone(tz.ianaName)}
-            >
-              <XMarkIcon className="h-5 w-5" />
-            </Button>
-            <div className="flex justify-between items-start">
-              <div>
-                <h2 className="text-2xl font-semibold">{tz.name}</h2>
-                <p className="text-gray-500">{tz.location}</p>
-              </div>
-              <div className="text-right">
-                <h3 className="text-3xl font-bold">{tz.time}</h3>
-                <div className="flex items-center justify-end space-x-2">
-                  <span className="text-gray-500">{tz.timezone}</span>
-                  <span className="text-gray-400">{tz.date}</span>
+        {timeZones.length === 0 ? (
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-2">Welcome to ZonePal</h2>
+            <p className="text-gray-500">Start by adding a timezone from the search box above</p>
+          </div>
+        ) : (
+          timeZones.map((tz) => (
+            <div key={tz.ianaName} className="bg-white rounded-lg p-6 shadow-sm relative group">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => handleRemoveTimeZone(tz.ianaName)}
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </Button>
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-semibold">{tz.name}</h2>
+                  <p className="text-gray-500">{tz.location}</p>
+                </div>
+                <div className="text-right">
+                  <h3 className="text-3xl font-bold">{tz.time}</h3>
+                  <div className="flex items-center justify-end space-x-2">
+                    <span className="text-gray-500">{tz.timezone}</span>
+                    <span className="text-gray-400">{tz.date}</span>
+                  </div>
                 </div>
               </div>
+              <Timeline 
+                ianaName={tz.ianaName}
+                selectedDate={selectedDate}
+                onTimeChange={handleTimeChange}
+              />
             </div>
-            <Timeline 
-              ianaName={tz.ianaName}
-              selectedDate={selectedDate}
-              onTimeChange={handleTimeChange}
-            />
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </main>
   );

@@ -10,15 +10,33 @@ interface TimelineProps {
   use24Hour?: boolean;
 }
 
-// Every 2 hours we show a marker
-const MARKERS = Array.from({ length: 13 }, (_, i) => i * 2)
-// Every 4 hours we show a label
-const LABELS = Array.from({ length: 7 }, (_, i) => i * 4)
+// Constants for different screen sizes
+const MARKERS = {
+  mobile: Array.from({ length: 7 }, (_, i) => i * 4), // 0, 4, 8, 12, 16, 20
+  desktop: Array.from({ length: 13 }, (_, i) => i * 2), // 0, 2, 4, ..., 22, 24
+};
+
+const LABELS = {
+  mobile: [0, 6, 12, 18, 24], // Include both 0 and 24 for 12am
+  desktop: [0, 4, 8, 12, 16, 20, 24], // Include both 0 and 24 for 12am
+};
 
 export function Timeline({ ianaName, onTimeChange, selectedDate, use24Hour = false }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
   const [position, setPosition] = useState(50) // Percentage (0-100)
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Check if we're on mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // 768px is typical tablet/mobile breakpoint
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Convert position to time in the target timezone
   const positionToTime = useCallback((pos: number): Date => {
@@ -132,12 +150,12 @@ export function Timeline({ ianaName, onTimeChange, selectedDate, use24Hour = fal
         >
           {/* Time markers */}
           <div className="absolute inset-0 flex items-center">
-            {MARKERS.map((hour) => (
+            {(isMobile ? MARKERS.mobile : MARKERS.desktop).map((hour) => (
               <div
                 key={hour}
                 className="absolute h-3 w-px bg-blue-200"
                 style={{
-                  left: `calc(${(hour / 24) * 100}% + 2px)`,
+                  left: `${(hour / 24) * 100}%`,
                   top: '-4px'
                 }}
               />
@@ -153,17 +171,17 @@ export function Timeline({ ianaName, onTimeChange, selectedDate, use24Hour = fal
         />
       </div>
 
-      {/* Time labels - now only every 4 hours */}
+      {/* Time labels - responsive */}
       <div className="relative mt-4 text-sm text-gray-500">
-        {LABELS.map(hour => (
+        {(isMobile ? LABELS.mobile : LABELS.desktop).map(hour => (
           <div
             key={hour}
             className="absolute transform -translate-x-1/2"
             style={{ left: `${(hour / 24) * 100}%` }}
           >
             {use24Hour 
-              ? `${hour.toString().padStart(2, '0')}:00`
-              : hour === 0 ? '12am' : hour === 12 ? '12pm' : hour > 12 ? `${hour-12}pm` : `${hour}am`
+              ? `${(hour % 24).toString().padStart(2, '0')}:00`
+              : hour === 0 || hour === 24 ? '12am' : hour === 12 ? '12pm' : hour > 12 ? `${hour-12}pm` : `${hour}am`
             }
           </div>
         ))}
