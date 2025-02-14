@@ -75,7 +75,7 @@ export function ZonePalContent() {
       
       // Update URL
       const param = getTimezoneParam(updatedZones);
-      router.push(`/zonepal?z=${param}`);
+      router.push(`/?z=${param}`);
       
       return updatedZones;
     });
@@ -88,9 +88,9 @@ export function ZonePalContent() {
       // Update URL
       if (updatedZones.length > 0) {
         const param = getTimezoneParam(updatedZones);
-        router.push(`/zonepal?z=${param}`);
+        router.push(`/?z=${param}`);
       } else {
-        router.push('/zonepal');
+        router.push('/');
       }
       
       return updatedZones;
@@ -108,7 +108,7 @@ export function ZonePalContent() {
       // Update URL with sorted zones
       const param = getTimezoneParam(sortedZones);
       if (sortedZones.length > 0) {
-        router.push(`/zonepal?z=${param}`);
+        router.push(`/?z=${param}`);
       }
       
       return sortedZones;

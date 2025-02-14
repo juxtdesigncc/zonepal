@@ -43,6 +43,7 @@ A web application that allows users to easily convert times across different tim
 - Automatic timezone offset calculations
 - UTC-based time storage for consistency
 - Timezone conversion using IANA timezone database
+- URL-based state management using query parameters (e.g., `/?z=Asia/Hong_Kong-to-America/New_York`)
 
 #### Search Capabilities
 - Search by timezone name
