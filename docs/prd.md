@@ -72,6 +72,21 @@ A web application that allows users to easily convert times across different tim
 - Consistent time synchronization across components
 - Support for both local and UTC time representations
 
+#### Timezone Conversion Implementation
+- Timeline position to time conversion:
+  - Position (0-100%) maps to 24-hour time (0-24 hours)
+  - Uses Intl.DateTimeFormat for accurate timezone offset detection
+  - Parses GMT offset strings to handle hours and minutes separately
+  - Adjusts UTC time based on timezone-specific offsets
+- Time to position conversion:
+  - Converts UTC time to target timezone using date-fns-tz
+  - Calculates position based on local hours in timezone
+  - Maintains consistency across different timezone displays
+- Error handling:
+  - Graceful fallback to selected date on conversion errors
+  - Logging of conversion steps for debugging
+  - Validation of position and time values
+
 #### State Management
 - React state for UI components
 - Timezone data caching
