@@ -1,17 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, ArrowsUpDownIcon, LinkIcon, MoonIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { CalendarIcon, ArrowsUpDownIcon, MoonIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { TimeZoneInfo, getTimeInTimeZone, findTimezoneByIana, parseTimezoneParam, getTimezoneParam } from '@/lib/timezone';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TimezoneSearch } from '@/components/timezone-search';
 import { Timeline } from '@/components/timezone-timeline';
 
-export default function ZonePal() {
+function ZonePalContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -193,5 +193,20 @@ export default function ZonePal() {
         )}
       </div>
     </main>
+  );
+}
+
+// Default export wrapped in Suspense
+export default function ZonePal() {
+  return (
+    <Suspense fallback={
+      <div className="container mx-auto p-4 max-w-7xl">
+        <div className="text-center py-12">
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Loading...</h2>
+        </div>
+      </div>
+    }>
+      <ZonePalContent />
+    </Suspense>
   );
 } 
