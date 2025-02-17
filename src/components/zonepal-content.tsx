@@ -173,11 +173,17 @@ export function ZonePalContent() {
               <div className="flex justify-between items-start">
                 <div>
                   <h2 className="text-2xl font-semibold">{tz.name}</h2>
-                  <p className="text-gray-500">{tz.location}</p>
+                  <div className="flex flex-col text-sm">
+                    <span className="text-gray-500">{tz.country}</span>
+                    <span className="text-gray-400 text-xs">
+                      {tz.ianaName}
+                      {tz.dstOffset !== tz.utcOffset && " (observes DST)"}
+                    </span>
+                  </div>
                 </div>
                 <div className="text-right">
                   <h3 className="text-3xl font-bold">{tz.time}</h3>
-                  <div className="flex items-center justify-end space-x-2">
+                  <div className="flex flex-col items-end">
                     <span className="text-gray-500">{tz.timezone}</span>
                     <span className="text-gray-400">{tz.date}</span>
                   </div>

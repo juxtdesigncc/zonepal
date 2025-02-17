@@ -52,6 +52,10 @@ A web application that allows users to easily convert times across different tim
 - Filtering out already selected timezones
 - Support for IANA timezone identifiers
 
+#### Testing Case for Search Function
+1. When i type "New ", new york and new salem should be returned
+2. When i type "USA" or "United States" all timezones in the United States should be returned
+
 ### Interaction Features
 #### Timeline Interaction
 - Click anywhere on timeline to set time

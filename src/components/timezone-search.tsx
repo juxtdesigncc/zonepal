@@ -13,9 +13,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { PlusIcon } from "@heroicons/react/24/outline"
+import { PlusIcon, CheckIcon } from "@heroicons/react/24/outline"
 import { TimeZoneInfo, timezoneDatabase } from "@/lib/timezone"
-import { formatInTimeZone } from 'date-fns-tz'
 
 interface TimezoneSearchProps {
   onSelect: (timezone: TimeZoneInfo) => void;
@@ -29,19 +28,33 @@ interface GroupedTimezones {
 // Memoized timezone item component
 const TimezoneItem = React.memo(({ 
   timezone, 
-  onSelect 
+  onSelect,
+  isSelected
 }: { 
   timezone: TimeZoneInfo; 
   onSelect: (value: string) => void;
+  isSelected: boolean;
 }) => (
   <CommandItem
-    value={timezone.ianaName}
-    onSelect={onSelect}
+    value={`${timezone.label} ${timezone.country}`}
+    onSelect={() => onSelect(timezone.ianaName)}
+    disabled={isSelected}
+    className={isSelected ? 'opacity-50 cursor-not-allowed' : ''}
   >
     <span className="flex items-center justify-between w-full">
-      <span>{timezone.label}</span>
+      <span className="flex items-center gap-2">
+        {isSelected && (
+          <CheckIcon className="h-4 w-4 text-muted-foreground" />
+        )}
+        <span className="flex flex-col">
+          <span>{timezone.label}</span>
+          <span className="text-xs text-muted-foreground">
+            {timezone.country} {timezone.countryCode ? `(${timezone.countryCode})` : ''}
+          </span>
+        </span>
+      </span>
       <span className="text-xs text-muted-foreground ml-2">
-        {timezone.ianaName} ({timezone.timezone})
+        {timezone.timezone}
       </span>
     </span>
   </CommandItem>
@@ -52,12 +65,14 @@ TimezoneItem.displayName = 'TimezoneItem';
 // Memoized timezone group component
 const TimezoneGroup = React.memo(({ 
   region, 
-  timezones, 
-  onSelect 
+  timezones,
+  onSelect,
+  selectedTimezones
 }: { 
   region: string; 
   timezones: TimeZoneInfo[];
   onSelect: (value: string) => void;
+  selectedTimezones: string[];
 }) => (
   <CommandGroup heading={region}>
     {timezones.map((timezone) => (
@@ -65,6 +80,7 @@ const TimezoneGroup = React.memo(({
         key={timezone.ianaName}
         timezone={timezone}
         onSelect={onSelect}
+        isSelected={selectedTimezones.includes(timezone.ianaName)}
       />
     ))}
   </CommandGroup>
@@ -77,33 +93,92 @@ export function TimezoneSearch({ onSelect, selectedTimezones = [] }: TimezoneSea
   const [lastSelected, setLastSelected] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState(false);
 
-  // Filter out already selected timezones - memoize this computation
   const availableTimezones = React.useMemo(() => 
-    timezoneDatabase.filter(tz => !selectedTimezones.includes(tz.ianaName))
-  , [selectedTimezones]);
+    timezoneDatabase
+  , []);
 
   // Filter timezones based on search
   const filteredTimezones = React.useMemo(() => {
-    if (!search) return availableTimezones;
+    if (!search) {
+      return availableTimezones;
+    }
     
-    const searchLower = search.toLowerCase();
-    return availableTimezones.filter(tz => 
-      tz.label.toLowerCase().includes(searchLower) ||
-      tz.region.toLowerCase().includes(searchLower) ||
-      tz.timezone.toLowerCase().includes(searchLower) ||
-      tz.ianaName.toLowerCase().includes(searchLower)
-    );
+    // Clean up search input but keep spaces for matching
+    const searchTerms = search.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    if (searchTerms.length === 0) {
+      return availableTimezones;
+    }
+
+    // First try to find exact matches
+    const exactMatches = availableTimezones.filter(tz => {
+      const cityName = tz.label.toLowerCase();
+      return cityName === searchTerms.join(' ');
+    });
+
+    if (exactMatches.length > 0) {
+      return exactMatches;
+    }
+
+    // Then try to find partial matches where all terms are included
+    const partialMatches = availableTimezones.filter(tz => {
+      const searchableText = [
+        tz.label.toLowerCase(),
+        tz.country.toLowerCase(),
+        tz.countryCode.toLowerCase(),
+      ].join(' ');
+
+      return searchTerms.every(term => searchableText.includes(term));
+    });
+
+    if (partialMatches.length > 0) {
+      return partialMatches;
+    }
+
+    // Finally, try broader matches where any term matches
+    return availableTimezones.filter(tz => {
+      const searchableText = [
+        tz.label.toLowerCase(),
+        tz.region.toLowerCase(),
+        tz.country.toLowerCase(),
+        tz.countryCode.toLowerCase(),
+        tz.timezone.toLowerCase(),
+        tz.ianaName.toLowerCase()
+      ].join(' ');
+
+      return searchTerms.some(term => searchableText.includes(term));
+    });
   }, [availableTimezones, search]);
 
-  // Group timezones by region
+  // Group timezones by region and sort by country
   const groupedTimezones = React.useMemo(() => {
-    return filteredTimezones.reduce((acc: GroupedTimezones, tz) => {
-      if (!acc[tz.region]) {
-        acc[tz.region] = [];
+    const groups: GroupedTimezones = {};
+    
+    // First group by region
+    filteredTimezones.forEach(tz => {
+      // For country searches, group by country instead of region
+      const isCountrySearch = filteredTimezones.every(t => t.country === filteredTimezones[0].country);
+      const groupKey = isCountrySearch ? tz.country : tz.region;
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
       }
-      acc[tz.region].push(tz);
-      return acc;
-    }, {});
+      groups[groupKey].push(tz);
+    });
+    
+    // Sort timezones within each group
+    Object.keys(groups).forEach(groupKey => {
+      groups[groupKey].sort((a, b) => {
+        // If it's a country search, sort by city name only
+        if (a.country === b.country) {
+          return a.label.localeCompare(b.label);
+        }
+        // Otherwise, sort by country then city
+        const countryCompare = a.country.localeCompare(b.country);
+        return countryCompare !== 0 ? countryCompare : a.label.localeCompare(b.label);
+      });
+    });
+    
+    return groups;
   }, [filteredTimezones]);
 
   // Memoize the handleSelect function
@@ -112,26 +187,7 @@ export function TimezoneSearch({ onSelect, selectedTimezones = [] }: TimezoneSea
     
     try {
       const selectedTimezone = timezoneDatabase.find(tz => tz.ianaName === value);
-      if (!selectedTimezone) {
-        console.error('Timezone not found:', value);
-        return;
-      }
-
-      // Log timezone selection
-      const now = new Date();
-      const localTime = now.toLocaleTimeString();
-      const tzTime = formatInTimeZone(now, selectedTimezone.ianaName, 'HH:mm:ss');
-      
-      console.log('Timezone Added:', {
-        name: selectedTimezone.label,
-        ianaName: selectedTimezone.ianaName,
-        region: selectedTimezone.region,
-        offset: selectedTimezone.timezone,
-        localTime: localTime,
-        selectedTimezoneTime: tzTime,
-        searchQuery: search || 'direct selection',
-        timestamp: now.toISOString()
-      });
+      if (!selectedTimezone) return;
 
       // Update state in a more controlled way
       setLastSelected(value);
@@ -142,9 +198,9 @@ export function TimezoneSearch({ onSelect, selectedTimezones = [] }: TimezoneSea
         onSelect(selectedTimezone);
       });
     } catch (error) {
-      console.error('Error adding timezone:', error);
+      // Silent error handling
     }
-  }, [onSelect, search, lastSelected]);
+  }, [onSelect, lastSelected]);
 
   // Memoize the timezone groups rendering
   const timezoneGroups = React.useMemo(() => (
@@ -154,9 +210,10 @@ export function TimezoneSearch({ onSelect, selectedTimezones = [] }: TimezoneSea
         region={region}
         timezones={timezones}
         onSelect={handleSelect}
+        selectedTimezones={selectedTimezones}
       />
     ))
-  ), [groupedTimezones, handleSelect]);
+  ), [groupedTimezones, handleSelect, selectedTimezones]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

@@ -1,4 +1,5 @@
 import { formatInTimeZone } from 'date-fns-tz'
+import * as ct from 'countries-and-timezones'
 
 export interface TimeZoneInfo {
   name: string;
@@ -11,6 +12,10 @@ export interface TimeZoneInfo {
   value: string;
   label: string;
   region: string;
+  country: string;
+  countryCode: string;
+  utcOffset: number;
+  dstOffset: number;
 }
 
 export function getTimeInTimeZone(date: Date, timeZone: string): { time: string; date: string } {
@@ -20,30 +25,14 @@ export function getTimeInTimeZone(date: Date, timeZone: string): { time: string;
 }
 
 export function getTimezoneOffset(timeZone: string): string {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    timeZoneName: 'shortOffset',
-  });
-  const parts = formatter.formatToParts(new Date());
-  const offsetPart = parts.find(part => part.type === 'timeZoneName')?.value || '';
-  
-  // Ensure consistent formatting for GMT+0
-  if (offsetPart === 'GMT') {
-    return 'GMT+00:00';
-  }
-  
-  // Format other offsets consistently
-  const match = offsetPart.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
-  if (match) {
-    const [, sign, hours, minutes = '00'] = match;
-    return `GMT${sign}${hours.padStart(2, '0')}:${minutes}`;
-  }
-  
-  return offsetPart;
+  const tzInfo = ct.getTimezone(timeZone);
+  return tzInfo ? `GMT${tzInfo.utcOffsetStr}` : '';
 }
 
 // Create a shared timezone database
 export const timezoneDatabase = Intl.supportedValuesOf('timeZone').map(timezone => {
+  const tzInfo = ct.getTimezone(timezone);
+  const countryInfo = tzInfo?.countries?.[0] ? ct.getCountry(tzInfo.countries[0]) : null;
   const offset = getTimezoneOffset(timezone);
   const label = timezone.split('/').pop()?.replace(/_/g, ' ') || timezone;
   const region = timezone.split('/')[0];
@@ -55,12 +44,24 @@ export const timezoneDatabase = Intl.supportedValuesOf('timeZone').map(timezone 
     offset: offset.replace('GMT', ''),
     ianaName: timezone,
     region,
+    country: countryInfo?.name || region,
+    countryCode: countryInfo?.id || '',
     location: label,
     name: label,
     time: '',
-    date: ''
+    date: '',
+    utcOffset: tzInfo?.utcOffset || 0,
+    dstOffset: tzInfo?.dstOffset || 0
   };
 });
+
+// Group timezones by country for easier lookup
+export const timezonesByCountry = Object.values(ct.getAllCountries()).reduce((acc: { [key: string]: TimeZoneInfo[] }, country) => {
+  acc[country.name] = country.timezones
+    .map(tz => timezoneDatabase.find(t => t.ianaName === tz))
+    .filter((tz): tz is TimeZoneInfo => tz !== undefined);
+  return acc;
+}, {});
 
 // URL parameter handling
 export function getTimezoneParam(timezones: TimeZoneInfo[]): string {
@@ -73,4 +74,19 @@ export function parseTimezoneParam(param: string): string[] {
 
 export function findTimezoneByIana(ianaName: string): TimeZoneInfo | undefined {
   return timezoneDatabase.find(tz => tz.ianaName === ianaName);
+}
+
+// New helper functions
+export function getTimezonesForCountry(countryCode: string): TimeZoneInfo[] {
+  const country = ct.getCountry(countryCode);
+  if (!country) return [];
+  
+  return country.timezones
+    .map(tz => timezoneDatabase.find(t => t.ianaName === tz))
+    .filter((tz): tz is TimeZoneInfo => tz !== undefined);
+}
+
+export function getCountryForTimezone(timezoneName: string): { code: string; name: string } | null {
+  const country = ct.getCountryForTimezone(timezoneName);
+  return country ? { code: country.id, name: country.name } : null;
 } 
