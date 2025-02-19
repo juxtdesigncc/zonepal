@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, ArrowsUpDownIcon, MoonIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { CalendarIcon, ArrowsUpDownIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { TimeZoneInfo, getTimeInTimeZone, findTimezoneByIana, parseTimezoneParam, getTimezoneParam } from '@/lib/timezone';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TimezoneSearch } from '@/components/timezone-search';
-import { Timeline } from '@/components/timezone-timeline';
+// import { Timeline } from '@/components/timezone-timeline';
+import { TimelineRadix } from '@/components/timeline-radix';
 
 export function ZonePalContent() {
   const router = useRouter();
@@ -147,9 +148,9 @@ export function ZonePalContent() {
           <Button variant="ghost" size="icon" onClick={handleSortTimeZones}>
             <ArrowsUpDownIcon className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="icon">
+          {/* <Button variant="ghost" size="icon">
             <MoonIcon className="h-5 w-5" />
-          </Button>
+          </Button> */}
         </div>
       </div>
 
@@ -161,7 +162,7 @@ export function ZonePalContent() {
           </div>
         ) : (
           timeZones.map((tz) => (
-            <div key={tz.ianaName} className="bg-white rounded-lg p-6 shadow-sm relative group">
+            <div key={tz.ianaName} className="bg-white rounded-lg p-6 pr-12 shadow-sm relative group">
               <Button
                 variant="ghost"
                 size="icon"
@@ -189,11 +190,20 @@ export function ZonePalContent() {
                   </div>
                 </div>
               </div>
-              <Timeline 
+              {/* Original Timeline (kept for reference) */}
+              {/* <Timeline 
                 ianaName={tz.ianaName}
                 selectedDate={selectedDate}
                 onTimeChange={handleTimeChange}
-              />
+              /> */}
+              {/* <div className="mt-8">
+                <h3 className="text-sm font-medium text-gray-500 mb-4">Radix Version (POC):</h3> */}
+                <TimelineRadix
+                  ianaName={tz.ianaName}
+                  selectedDate={selectedDate}
+                  onTimeChange={handleTimeChange}
+                />
+              {/* </div> */}
             </div>
           ))
         )}

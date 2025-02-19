@@ -23,8 +23,9 @@ const LABELS = {
 export function Timeline({ ianaName, onTimeChange, selectedDate, use24Hour = false }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
-  const [position, setPosition] = useState(50) // Percentage (0-100)
+  const [position, setPosition] = useState(50)
   const [isMobile, setIsMobile] = useState(false)
+  const [isDraggingClass, setIsDraggingClass] = useState(false)
 
   // Check if we're on mobile
   useEffect(() => {
@@ -123,47 +124,72 @@ export function Timeline({ ianaName, onTimeChange, selectedDate, use24Hour = fal
     setPosition(newPosition)
   }, [selectedDate, timeToPosition])
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault()
-    isDragging.current = true
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-  }
-
   const calculateNewPosition = useCallback((clientX: number): number => {
     if (!timelineRef.current) return 0
     const rect = timelineRef.current.getBoundingClientRect()
-    const x = clientX - rect.left
+    const x = Math.max(0, Math.min(clientX - rect.left, rect.width))
     return Math.max(0, Math.min(100, (x / rect.width) * 100))
   }, [])
 
-  const handleTimelineClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent event bubbling
-    const newPosition = calculateNewPosition(e.clientX)
+  const updateTimeFromPosition = useCallback((newPosition: number) => {
     const newTime = positionToTime(newPosition)
-    console.log('Timeline clicked:', { 
-      position: newPosition,
-      timezone: ianaName,
-      time: newTime.toISOString()
-    })
     setPosition(newPosition)
     onTimeChange?.(newTime)
-  }, [calculateNewPosition, positionToTime, onTimeChange, ianaName])
+  }, [positionToTime, onTimeChange])
+
+  const startDragging = useCallback((clientX: number) => {
+    isDragging.current = true
+    setIsDraggingClass(true)
+    const newPosition = calculateNewPosition(clientX)
+    updateTimeFromPosition(newPosition)
+  }, [calculateNewPosition, updateTimeFromPosition])
+
+  const handleTimelineMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    startDragging(e.clientX)
+    
+    // Add event listeners for drag
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [startDragging])
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging.current) return
-
-    const newPosition = calculateNewPosition(e.clientX)
-    const newTime = positionToTime(newPosition)
-    setPosition(newPosition)
-    onTimeChange?.(newTime)
-  }, [calculateNewPosition, positionToTime, onTimeChange])
+    e.preventDefault()
+    requestAnimationFrame(() => {
+      const newPosition = calculateNewPosition(e.clientX)
+      updateTimeFromPosition(newPosition)
+    })
+  }, [calculateNewPosition, updateTimeFromPosition])
 
   const handleMouseUp = useCallback(() => {
     isDragging.current = false
+    setIsDraggingClass(false)
     document.removeEventListener('mousemove', handleMouseMove)
     document.removeEventListener('mouseup', handleMouseUp)
   }, [handleMouseMove])
+
+  // Touch event handlers
+  const handleTimelineTouchStart = useCallback((e: React.TouchEvent) => {
+    e.preventDefault()
+    const touch = e.touches[0]
+    startDragging(touch.clientX)
+  }, [startDragging])
+
+  const handleTimelineTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDragging.current) return
+    e.preventDefault()
+    const touch = e.touches[0]
+    requestAnimationFrame(() => {
+      const newPosition = calculateNewPosition(touch.clientX)
+      updateTimeFromPosition(newPosition)
+    })
+  }, [calculateNewPosition, updateTimeFromPosition])
+
+  const handleTimelineTouchEnd = useCallback(() => {
+    isDragging.current = false
+    setIsDraggingClass(false)
+  }, [])
 
   // Cleanup event listeners
   useEffect(() => {
@@ -175,12 +201,17 @@ export function Timeline({ ianaName, onTimeChange, selectedDate, use24Hour = fal
 
   return (
     <div className="mt-4 relative select-none">
-      <div className="relative">
+      <div 
+        className="relative"
+        onMouseDown={handleTimelineMouseDown}
+        onTouchStart={handleTimelineTouchStart}
+        onTouchMove={handleTimelineTouchMove}
+        onTouchEnd={handleTimelineTouchEnd}
+      >
         {/* Timeline bar with border */}
         <div 
           ref={timelineRef}
           className="relative h-2 bg-gradient-to-r from-blue-900 via-blue-200 to-blue-900 rounded-full cursor-pointer border border-blue-300"
-          onClick={handleTimelineClick}
           role="slider"
           aria-valuemin={0}
           aria-valuemax={100}
@@ -201,12 +232,28 @@ export function Timeline({ ianaName, onTimeChange, selectedDate, use24Hour = fal
           </div>
         </div>
 
-        {/* Draggable circle */}
+        {/* Draggable marker */}
         <div 
-          className="absolute w-4 h-4 bg-white border-2 border-blue-500 rounded-full top-1/2 transform -translate-x-1/2 cursor-grab active:cursor-grabbing z-10"
-          style={{ left: `${position}%` }}
-          onMouseDown={handleMouseDown}
-        />
+          className={`absolute w-16 h-6 -top-2 transform -translate-x-1/2 cursor-grab z-10 group transition-transform ${isDraggingClass ? 'cursor-grabbing scale-105' : ''}`}
+          style={{ 
+            left: `${position}%`,
+            transition: isDraggingClass ? 'none' : 'transform 0.2s ease-out, left 0.2s ease-out'
+          }}
+        >
+          {/* Draggable handle with shadow and hover effect */}
+          <div className={`w-full h-full bg-white rounded-lg border-2 border-blue-500 shadow-md transition-all duration-200 
+            ${isDraggingClass 
+              ? 'shadow-lg border-blue-600 scale-105' 
+              : 'group-hover:shadow-lg group-hover:border-blue-600'}`}
+          >
+            {/* Grip lines for draggable appearance */}
+            <div className="flex gap-1 h-full items-center justify-center">
+              <div className="w-0.5 h-3 bg-blue-300 rounded-full group-hover:bg-blue-400" />
+              <div className="w-0.5 h-3 bg-blue-300 rounded-full group-hover:bg-blue-400" />
+              <div className="w-0.5 h-3 bg-blue-300 rounded-full group-hover:bg-blue-400" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Time labels - responsive */}
