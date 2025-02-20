@@ -31,4 +31,4 @@ export default function SuspendedPostHogPageView() {
   return <Suspense fallback={null}>
     <PostHogPageView />
   </Suspense>
-}
+} 
