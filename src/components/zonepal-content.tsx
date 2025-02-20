@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { TimezoneSearch } from '@/components/timezone-search';
 // import { Timeline } from '@/components/timezone-timeline';
 import { TimelineRadix } from '@/components/timeline-radix';
+import { WeatherIcon } from '@/components/weather-icon';
 
 export function ZonePalContent() {
   const router = useRouter();
@@ -191,9 +192,15 @@ export function ZonePalContent() {
               </Button>
               <div className="flex justify-between items-start">
                 <div>
-                  <h2 className="text-2xl font-semibold">{tz.name}</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-2xl font-semibold">{tz.name}</h2>
+                    <WeatherIcon 
+                      city={tz.label}
+                      country={tz.country}
+                      className="mt-1"
+                    />
+                  </div>
                   <div className="flex flex-col text-sm">
-                    {/* <span className="text-gray-500">{tz.country}</span> */}
                     <span className="text-gray-400 text-xs">
                       {tz.ianaName}
                       {tz.dstOffset !== tz.utcOffset && " (observes DST)"}
