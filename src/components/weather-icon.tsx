@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WeatherData } from '@/lib/types/weather';
+import Image from 'next/image';
 
 // Cache weather data in memory
 const weatherCache: {
@@ -71,9 +72,11 @@ export function WeatherIcon({ city, country, className }: WeatherIconProps) {
 
   return (
     <div className={`inline-flex items-center gap-1 ${className}`} title={weather.description}>
-      <img 
+      <Image 
         src={weather.icon} 
         alt={weather.description}
+        width={24}
+        height={24}
         className="w-6 h-6"
       />
       <span className="text-sm text-gray-500">{Math.round(weather.temperature)}°C</span>

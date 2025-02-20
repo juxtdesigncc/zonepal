@@ -23,7 +23,7 @@ async function fetchWeatherData(city: string, country: string): Promise<WeatherD
 
   const data = await response.json();
   return {
-    icon: data.current.condition.icon,
+    icon: data.current.condition.icon.replace('//', 'https://'),
     temperature: data.current.temp_c,
     description: data.current.condition.text,
     condition: data.current.condition.code.toString()

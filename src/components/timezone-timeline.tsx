@@ -122,7 +122,7 @@ export function Timeline({ ianaName, onTimeChange, selectedDate, use24Hour = fal
       position: newPosition 
     })
     setPosition(newPosition)
-  }, [selectedDate, timeToPosition])
+  }, [selectedDate, timeToPosition, ianaName]);
 
   const calculateNewPosition = useCallback((clientX: number): number => {
     if (!timelineRef.current) return 0
@@ -144,15 +144,6 @@ export function Timeline({ ianaName, onTimeChange, selectedDate, use24Hour = fal
     updateTimeFromPosition(newPosition)
   }, [calculateNewPosition, updateTimeFromPosition])
 
-  const handleTimelineMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    startDragging(e.clientX)
-    
-    // Add event listeners for drag
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-  }, [startDragging])
-
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging.current) return
     e.preventDefault()
@@ -168,6 +159,15 @@ export function Timeline({ ianaName, onTimeChange, selectedDate, use24Hour = fal
     document.removeEventListener('mousemove', handleMouseMove)
     document.removeEventListener('mouseup', handleMouseUp)
   }, [handleMouseMove])
+
+  const handleTimelineMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    startDragging(e.clientX)
+    
+    // Add event listeners for drag
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [startDragging, handleMouseMove, handleMouseUp])
 
   // Touch event handlers
   const handleTimelineTouchStart = useCallback((e: React.TouchEvent) => {
