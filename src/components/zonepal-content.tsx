@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -18,6 +18,23 @@ export function ZonePalContent() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [timeZones, setTimeZones] = useState<TimeZoneInfo[]>([]);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+
+  // Add keyboard shortcut handler
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only trigger if not in an input field or textarea
+      if (e.key.toLowerCase() === 'k' && 
+          !(e.target instanceof HTMLInputElement) && 
+          !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        searchTriggerRef.current?.click();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, []);
 
   // Initialize timezones from URL
   useEffect(() => {
@@ -123,6 +140,7 @@ export function ZonePalContent() {
           <TimezoneSearch 
             onSelect={handleAddTimeZone} 
             selectedTimezones={timeZones.map(tz => tz.ianaName)}
+            triggerRef={searchTriggerRef}
           />
         </div>
         <div className="relative z-40">
@@ -175,7 +193,7 @@ export function ZonePalContent() {
                 <div>
                   <h2 className="text-2xl font-semibold">{tz.name}</h2>
                   <div className="flex flex-col text-sm">
-                    <span className="text-gray-500">{tz.country}</span>
+                    {/* <span className="text-gray-500">{tz.country}</span> */}
                     <span className="text-gray-400 text-xs">
                       {tz.ianaName}
                       {tz.dstOffset !== tz.utcOffset && " (observes DST)"}

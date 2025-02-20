@@ -19,6 +19,7 @@ import { TimeZoneInfo, timezoneDatabase } from "@/lib/timezone"
 interface TimezoneSearchProps {
   onSelect: (timezone: TimeZoneInfo) => void;
   selectedTimezones?: string[]; // Array of selected IANA timezone names
+  triggerRef?: React.RefObject<HTMLButtonElement>;
 }
 
 interface GroupedTimezones {
@@ -88,7 +89,7 @@ const TimezoneGroup = React.memo(({
 
 TimezoneGroup.displayName = 'TimezoneGroup';
 
-export function TimezoneSearch({ onSelect, selectedTimezones = [] }: TimezoneSearchProps) {
+export function TimezoneSearch({ onSelect, selectedTimezones = [], triggerRef }: TimezoneSearchProps) {
   const [search, setSearch] = React.useState("");
   const [lastSelected, setLastSelected] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState(false);
@@ -219,6 +220,7 @@ export function TimezoneSearch({ onSelect, selectedTimezones = [] }: TimezoneSea
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button 
+          ref={triggerRef}
           variant="outline" 
           role="combobox" 
           aria-expanded={open}
@@ -228,6 +230,9 @@ export function TimezoneSearch({ onSelect, selectedTimezones = [] }: TimezoneSea
             <PlusIcon className="h-4 w-4" />
             Add Time Zone, City or Town...
           </span>
+          <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+            <span className="text-xs">K</span>
+          </kbd>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[400px] p-0" align="start">
