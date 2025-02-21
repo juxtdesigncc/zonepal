@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, ArrowsUpDownIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { CalendarIcon, ArrowsUpDownIcon, XMarkIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 import { TimeZoneInfo, getTimeInTimeZone, findTimezoneByIana, parseTimezoneParam, getTimezoneParam } from '@/lib/timezone';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -134,6 +134,10 @@ export function ZonePalContent() {
     });
   };
 
+  const handleResetTime = () => {
+    setSelectedDate(new Date());
+  };
+
   return (
     <div>
       <div className="flex items-center space-x-4 mb-8">
@@ -164,8 +168,21 @@ export function ZonePalContent() {
           </Popover>
         </div>
         <div className="flex space-x-2">
-          <Button variant="ghost" size="icon" onClick={handleSortTimeZones}>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={handleSortTimeZones}
+            title="Sort by timezone offset"
+          >
             <ArrowsUpDownIcon className="h-5 w-5" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon"
+            onClick={handleResetTime}
+            title="Reset to current time"
+          >
+            <ArrowPathIcon className="h-5 w-5" />
           </Button>
           {/* <Button variant="ghost" size="icon">
             <MoonIcon className="h-5 w-5" />
