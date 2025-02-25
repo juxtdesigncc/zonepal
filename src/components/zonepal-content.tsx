@@ -12,6 +12,9 @@ import { TimezoneSearch } from '@/components/timezone-search';
 // import { Timeline } from '@/components/timezone-timeline';
 import { TimelineRadix } from '@/components/timeline-radix';
 import { WeatherIcon } from '@/components/weather-icon';
+import { cn } from '@/lib/utils';
+import { TimelineSettings } from '@/lib/types';
+import { SettingsDialog } from '@/components/settings-dialog';
 
 export function ZonePalContent() {
   const router = useRouter();
@@ -20,6 +23,11 @@ export function ZonePalContent() {
   const [timeZones, setTimeZones] = useState<TimeZoneInfo[]>([]);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const [timelineSettings, setTimelineSettings] = useState<TimelineSettings>({
+    blockedTimeSlots: [],
+    defaultBlockedHours: { start: 22, end: 6 }, // Default blocked hours from 10 PM to 6 AM
+    referenceTimezone: 'UTC' // Default to UTC if no timezones
+  });
 
   // Add keyboard shortcut handler
   useEffect(() => {
@@ -138,55 +146,111 @@ export function ZonePalContent() {
     setSelectedDate(new Date());
   };
 
+  const handleSettingsChange = (newSettings: TimelineSettings) => {
+    // If we have timezones, use the first one as reference
+    if (timeZones.length > 0) {
+      const referenceTimezone = timeZones[0].ianaName;
+      setTimelineSettings({
+        ...newSettings,
+        referenceTimezone // Add this to the settings
+      });
+    } else {
+      setTimelineSettings({
+        ...newSettings,
+        referenceTimezone: 'UTC' // Default to UTC if no timezones
+      });
+    }
+  };
+
+  // Update settings when first timezone changes
+  useEffect(() => {
+    if (timeZones.length > 0 && (!timelineSettings.referenceTimezone || 
+        timelineSettings.referenceTimezone !== timeZones[0].ianaName)) {
+      setTimelineSettings(prev => ({
+        ...prev,
+        referenceTimezone: timeZones[0].ianaName
+      }));
+    }
+  }, [timeZones, timelineSettings.referenceTimezone]);
+
   return (
     <div>
-      <div className="flex items-center space-x-4 mb-8">
-        <div className="flex-1">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-4 mb-8">
+        <div className="flex-1 min-w-0">
           <TimezoneSearch 
             onSelect={handleAddTimeZone} 
             selectedTimezones={timeZones.map(tz => tz.ianaName)}
             triggerRef={searchTriggerRef}
           />
         </div>
-        <div className="relative z-40">
-          <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="w-40">
-                <CalendarIcon className="h-4 w-4 mr-2" />
-                {format(selectedDate, 'MMM dd, yyyy')}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end" sideOffset={4}>
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={handleDateSelect}
-                initialFocus
-                className="rounded-md border"
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
-        <div className="flex space-x-2">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={handleSortTimeZones}
-            title="Sort by timezone offset"
-          >
-            <ArrowsUpDownIcon className="h-5 w-5" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={handleResetTime}
-            title="Reset to current time"
-          >
-            <ArrowPathIcon className="h-5 w-5" />
-          </Button>
-          {/* <Button variant="ghost" size="icon">
-            <MoonIcon className="h-5 w-5" />
-          </Button> */}
+        <div className="flex items-center gap-2 sm:gap-4">
+          <div className="relative z-40">
+            <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className={cn(
+                    "transition-colors shrink-0",
+                    "md:w-40", // Only set width on medium screens and up
+                    "w-10 px-0 md:px-4", // Adjust padding for mobile
+                    selectedDate.toDateString() !== new Date().toDateString() && "bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300" // Active state when not today
+                  )}
+                >
+                  <CalendarIcon className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">{format(selectedDate, 'MMM dd, yyyy')}</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent 
+                className="w-auto p-0" 
+                align="end" 
+                sideOffset={4}
+                onOpenAutoFocus={(e) => {
+                  // Prevent auto-focusing on mobile to avoid keyboard popping up
+                  if (window.innerWidth < 640) {
+                    e.preventDefault();
+                  }
+                }}
+                // Ensure popover stays within viewport on mobile
+                forceMount
+                style={{
+                  maxWidth: 'calc(100vw - 32px)', // Keep 16px padding on each side
+                  maxHeight: 'calc(100vh - 32px)', // Keep 16px padding on top and bottom
+                }}
+              >
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={handleDateSelect}
+                  initialFocus
+                  className="rounded-md border max-w-full overflow-auto"
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleSortTimeZones}
+              title="Sort by timezone offset"
+              className="shrink-0"
+            >
+              <ArrowsUpDownIcon className="h-5 w-5" />
+            </Button>
+            <SettingsDialog 
+              settings={timelineSettings}
+              onSettingsChange={handleSettingsChange}
+            />
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={handleResetTime}
+              title="Reset to current time"
+              className="shrink-0"
+            >
+              <ArrowPathIcon className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -244,6 +308,9 @@ export function ZonePalContent() {
                   ianaName={tz.ianaName}
                   selectedDate={selectedDate}
                   onTimeChange={handleTimeChange}
+                  blockedTimeSlots={timelineSettings.blockedTimeSlots}
+                  defaultBlockedHours={timelineSettings.defaultBlockedHours}
+                  referenceTimezone={timelineSettings.referenceTimezone}
                 />
               {/* </div> */}
             </div>
