@@ -4,6 +4,13 @@ import { toZonedTime, formatInTimeZone } from 'date-fns-tz'
 import * as Slider from '@radix-ui/react-slider'
 import { BlockedTimeSlot } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { usePostHog } from 'posthog-js/react'
+import { trackEvent, EventCategory, EventAction } from '@/lib/analytics'
+
+// Create sets to track logged items across all component instances
+// This helps reduce duplicate logs
+const loggedConversions = new Set<string>();
+const loggedHourChecks = new Set<string>();
 
 interface TimelineRadixProps {
   ianaName: string;
@@ -12,7 +19,7 @@ interface TimelineRadixProps {
   use24Hour?: boolean;
   blockedTimeSlots?: BlockedTimeSlot[];
   defaultBlockedHours: { start: number; end: number };
-  referenceTimezone: string;
+  referenceTimezone: string; // Kept for future use but currently using local time only
 }
 
 // Constants for different screen sizes
@@ -33,11 +40,13 @@ export function TimelineRadix({
   use24Hour = false,
   blockedTimeSlots = [],
   defaultBlockedHours,
-  referenceTimezone
+  referenceTimezone // eslint-disable-line @typescript-eslint/no-unused-vars -- Kept for future reference-based functionality
 }: TimelineRadixProps) {
+  const posthog = usePostHog();
   const [position, setPosition] = useState(50)
   const [isMobile, setIsMobile] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [lastTrackedPosition, setLastTrackedPosition] = useState<number | null>(null);
 
   // Check if we're on mobile
   useEffect(() => {
@@ -89,7 +98,6 @@ export function TimelineRadix({
         0
       ))
     } catch (error) {
-      console.error('Error in positionToTime:', error)
       return selectedDate
     }
   }, [selectedDate, ianaName])
@@ -108,7 +116,6 @@ export function TimelineRadix({
       
       return Math.max(0, Math.min(100, position))
     } catch (error) {
-      console.error('Error in timeToPosition:', error)
       return 0
     }
   }, [ianaName])
@@ -126,16 +133,59 @@ export function TimelineRadix({
     onTimeChange?.(newTime)
   }, [positionToTime, onTimeChange])
 
+  // Track when user starts dragging the timeline
+  const handleDragStart = useCallback(() => {
+    setIsDragging(true);
+    setLastTrackedPosition(position);
+    
+    trackEvent(posthog, EventCategory.UI, EventAction.TOGGLE, {
+      action: 'timeline_drag_start',
+      timezone: ianaName,
+      position: position,
+      hour: Math.floor((position / 100) * 24)
+    });
+  }, [position, ianaName, posthog]);
+
   // Convert hours from reference timezone to current timezone
+  // Currently not used with local time blocks, but kept for future reference-based functionality
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const convertBlockedHours = useCallback((hour: number, fromTimezone: string, toTimezone: string): number => {
     try {
-      // Create a date object for today at the specified hour in the source timezone
-      const date = new Date();
-      date.setHours(hour, 0, 0, 0);
+      // If the timezones are the same, no conversion needed
+      if (fromTimezone === toTimezone) {
+        return hour;
+      }
       
-      // Format the time in the target timezone and extract the hour
-      const convertedTime = formatInTimeZone(date, toTimezone, 'HH');
-      return parseInt(convertedTime, 10);
+      // Only log for specific hours (0, 6, 12, 18, 22) to reduce noise
+      // AND only log the first occurrence of each hour conversion to further reduce logs
+      const conversionKey = `${hour}:${fromTimezone}:${toTimezone}`;
+      const shouldLog = [0, 6, 12, 18, 22].includes(hour) && !loggedConversions.has(conversionKey);
+      
+      if (shouldLog) {
+        console.log(`Converting hour ${hour} from ${fromTimezone} to ${toTimezone}`);
+        loggedConversions.add(conversionKey);
+      }
+      
+      // Create a date object for today at the specified hour in the source timezone
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = today.getMonth();
+      const day = today.getDate();
+      
+      // Create a date with the hour in the source timezone
+      const sourceDate = new Date(Date.UTC(year, month, day, hour, 0, 0));
+      
+      // Convert to the source timezone first
+      const sourceInSourceTz = toZonedTime(sourceDate, fromTimezone);
+      
+      // Then format in the target timezone to get the hour
+      const convertedTime = formatInTimeZone(sourceInSourceTz, toTimezone, 'HH');
+      const result = parseInt(convertedTime, 10);
+      
+      if (shouldLog) {
+        console.log(`Converted result: ${hour} in ${fromTimezone} => ${result} in ${toTimezone}`);
+      }
+      return result;
     } catch (error) {
       console.error('Error converting timezone hours:', error);
       return hour;
@@ -144,37 +194,110 @@ export function TimelineRadix({
 
   // Function to check if a given hour is active (not blocked)
   const isHourActive = useCallback((hour: number) => {
+    // Track which hours we've already logged to prevent duplicate logs
+    const hourCheckKey = `${hour}:${ianaName}`;
+    
+    // Only log for specific hours (0, 6, 12, 18) to reduce noise
+    // AND only log the first check for each hour/timezone combination
+    if ([0, 6, 12, 18].includes(hour) && !loggedHourChecks.has(hourCheckKey)) {
+      console.log(`Checking if hour ${hour} is active in ${ianaName} (local time)`);
+      loggedHourChecks.add(hourCheckKey);
+    }
+    
     // First check timezone-specific blocks
     const tzSpecificBlocks = blockedTimeSlots.filter(slot => slot.ianaName === ianaName);
     const globalBlocks = blockedTimeSlots.filter(slot => !slot.ianaName);
     
+    // Check if hour is within any timezone-specific block - using local time
     const isBlockedBySpecific = tzSpecificBlocks.some(slot => {
-      const convertedStart = convertBlockedHours(slot.start, referenceTimezone, ianaName);
-      const convertedEnd = convertBlockedHours(slot.end, referenceTimezone, ianaName);
-      return hour >= convertedStart && hour < convertedEnd;
-    });
-    
-    const isBlockedByGlobal = globalBlocks.some(slot => {
-      const convertedStart = convertBlockedHours(slot.start, referenceTimezone, ianaName);
-      const convertedEnd = convertBlockedHours(slot.end, referenceTimezone, ianaName);
-      return hour >= convertedStart && hour < convertedEnd;
-    });
-    
-    // If no specific blocks are defined, use default blocked hours
-    if (tzSpecificBlocks.length === 0 && globalBlocks.length === 0) {
-      const convertedStart = convertBlockedHours(defaultBlockedHours.start, referenceTimezone, ianaName);
-      const convertedEnd = convertBlockedHours(defaultBlockedHours.end, referenceTimezone, ianaName);
+      const start = slot.start;
+      const end = slot.end;
       
-      if (convertedStart <= convertedEnd) {
-        return !(hour >= convertedStart && hour < convertedEnd);
+      if (start <= end) {
+        return hour >= start && hour < end;
       } else {
-        // Handle overnight blocks (e.g., 22-6)
-        return !(hour >= convertedStart || hour < convertedEnd);
+        // Handle overnight blocks (e.g., 18-9)
+        return hour >= start || hour < end;
+      }
+    });
+
+    // Check if hour is within any global block - using local time
+    const isBlockedByGlobal = globalBlocks.some(slot => {
+      const start = slot.start;
+      const end = slot.end;
+      
+      if (start <= end) {
+        return hour >= start && hour < end;
+      } else {
+        // Handle overnight blocks (e.g., 18-9)
+        return hour >= start || hour < end;
+      }
+    });
+
+    // If no blocks are defined, use default blocked hours
+    if (tzSpecificBlocks.length === 0 && globalBlocks.length === 0) {
+      const start = defaultBlockedHours.start;
+      const end = defaultBlockedHours.end;
+      
+      if (start <= end) {
+        return !(hour >= start && hour < end);
+      } else {
+        // Handle overnight blocks (e.g., 18-9)
+        return !(hour >= start || hour < end);
       }
     }
     
+    // Hour is blocked if it's in any of the blocked slots
     return !(isBlockedBySpecific || isBlockedByGlobal);
-  }, [blockedTimeSlots, defaultBlockedHours, ianaName, convertBlockedHours, referenceTimezone]);
+  }, [blockedTimeSlots, defaultBlockedHours, ianaName]);
+
+  // Track when user stops dragging the timeline
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+    
+    // Only track if position has changed significantly (more than 5%)
+    if (lastTrackedPosition === null || Math.abs(position - lastTrackedPosition) > 5) {
+      const hour = Math.floor((position / 100) * 24);
+      const minute = Math.floor(((position / 100) * 24 % 1) * 60);
+      
+      trackEvent(posthog, EventCategory.UI, EventAction.CHANGE, {
+        action: 'timeline_time_change',
+        timezone: ianaName,
+        from_position: lastTrackedPosition,
+        to_position: position,
+        hour: hour,
+        minute: minute,
+        is_active_hour: isHourActive(hour)
+      });
+      
+      setLastTrackedPosition(position);
+    }
+  }, [position, lastTrackedPosition, ianaName, isHourActive, posthog]);
+
+  // Get the visual segments for the timeline
+  const getTimelineSegments = useCallback(() => {
+    const segments: { start: number; end: number; isActive: boolean }[] = [];
+    let currentIsActive = isHourActive(0);
+    let segmentStart = 0;
+
+    // Iterate through all 24 hours to find segments
+    for (let hour = 1; hour <= 24; hour++) {
+      const isActive = hour === 24 ? isHourActive(0) : isHourActive(hour);
+      
+      // If activity status changes, create a new segment
+      if (isActive !== currentIsActive || hour === 24) {
+        segments.push({
+          start: segmentStart,
+          end: hour,
+          isActive: currentIsActive
+        });
+        segmentStart = hour;
+        currentIsActive = isActive;
+      }
+    }
+
+    return segments;
+  }, [isHourActive]);
 
   return (
     <div className="mt-4 relative select-none">
@@ -182,31 +305,33 @@ export function TimelineRadix({
         className="relative flex items-center select-none touch-none w-full h-10 cursor-pointer"
         value={[position]}
         max={100}
-        step={100/(24*12)} // 5-minute steps
+        step={isMobile ? 100/(24*4) : 100/(24*12)} // 15-minute steps on mobile, 5-minute steps on desktop
         onValueChange={handleValueChange}
-        onPointerDown={() => setIsDragging(true)}
-        onPointerUp={() => setIsDragging(false)}
+        onPointerDown={handleDragStart}
+        onPointerUp={handleDragEnd}
       >
         <Slider.Track className="relative h-2 grow rounded-full bg-gradient-to-r from-blue-900 via-blue-200 to-blue-900 border border-blue-300">
           {/* Blocked time indicators */}
           <div className="absolute inset-0">
-            {Array.from({ length: 24 }, (_, hour) => {
-              const isActive = isHourActive(hour);
-              const startPercent = (hour / 24) * 100;
-              const widthPercent = (1 / 24) * 100;
-              
-              return !isActive ? (
-                <div
-                  key={hour}
-                  className="absolute h-full bg-white/90"
-                  style={{
-                    left: `${startPercent}%`,
-                    width: `${widthPercent}%`,
-                  }}
-                >
-                  <div className="w-full h-full bg-stripes-gray/10" />
-                </div>
-              ) : null;
+            {getTimelineSegments().map((segment, index) => {
+              if (!segment.isActive) {
+                const startPercent = (segment.start / 24) * 100;
+                const widthPercent = ((segment.end - segment.start) / 24) * 100;
+                
+                return (
+                  <div
+                    key={index}
+                    className="absolute h-full bg-white/90"
+                    style={{
+                      left: `${startPercent}%`,
+                      width: `${widthPercent}%`,
+                    }}
+                  >
+                    <div className="w-full h-full bg-stripes-gray/10" />
+                  </div>
+                );
+              }
+              return null;
             })}
           </div>
           
@@ -230,7 +355,7 @@ export function TimelineRadix({
 
         <Slider.Thumb
           className={cn(
-            "block w-16 h-6 -top-2 bg-white rounded-lg border shadow-md",
+            "block w-10 md:w-16 h-6 -top-2 bg-white rounded-lg border shadow-md",
             "transition-all duration-200 focus:outline-none focus:ring focus:ring-blue-500",
             "hover:shadow-lg group",
             isDragging ? 'scale-105 shadow-lg border-blue-400' : 'border-slate-200 hover:border-slate-300',

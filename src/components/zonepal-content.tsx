@@ -4,30 +4,97 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, ArrowsUpDownIcon, XMarkIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
+import { CalendarIcon, ArrowsUpDownIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 import { TimeZoneInfo, getTimeInTimeZone, findTimezoneByIana, parseTimezoneParam, getTimezoneParam } from '@/lib/timezone';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TimezoneSearch } from '@/components/timezone-search';
-// import { Timeline } from '@/components/timezone-timeline';
-import { TimelineRadix } from '@/components/timeline-radix';
-import { WeatherIcon } from '@/components/weather-icon';
 import { cn } from '@/lib/utils';
 import { TimelineSettings } from '@/lib/types';
 import { SettingsDialog } from '@/components/settings-dialog';
+import { usePostHog } from 'posthog-js/react';
+import { trackEvent, EventCategory, EventAction } from '@/lib/analytics';
+import { TimezoneCard } from '@/components/timezone-card';
+
+// Custom Pin Icon component - kept for future use but currently hidden from UI
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const PinIcon = ({ className }: { className?: string }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="1.5" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M12 2L12 5" />
+    <path d="M12 14L12 22" />
+    <path d="M5 5H19L17 10H7L5 5Z" />
+    <path d="M7 10L8 14H16L17 10" />
+  </svg>
+);
+
+// Add these utility functions at the top level
+const parseBlockedHoursParam = (param: string): { start: number; end: number }[] => {
+  try {
+    // Split by comma for multiple blocks, then split each block by hyphen
+    return param.split(',').map(block => {
+      const [start, end] = block.split('-').map(Number);
+      if (!isNaN(start) && !isNaN(end) && start >= 0 && start < 24 && end >= 0 && end < 24) {
+        return { start, end };
+      }
+      throw new Error('Invalid block format');
+    });
+  } catch (error) {
+    return [{ start: 22, end: 6 }]; // Default values
+  }
+};
+
+const getBlockedHoursParam = (blocks: { start: number; end: number }[]): string => {
+  return blocks.map(block => `${block.start}-${block.end}`).join(',');
+};
+
+// Track if we've already logged initialization
+let hasLoggedInitialization = false;
+let hasLoggedTimezoneInit = false;
+let hasLoggedBlockedHoursInit = false;
 
 export function ZonePalContent() {
+  const posthog = usePostHog();
+  
+  // Only log this once on initial load
+  if (!hasLoggedInitialization) {
+    console.log('ZONEPAL CONTENT LOADED - THIS SHOULD APPEAR IN CONSOLE');
+    hasLoggedInitialization = true;
+  }
+  
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [timeZones, setTimeZones] = useState<TimeZoneInfo[]>([]);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
-  const [timelineSettings, setTimelineSettings] = useState<TimelineSettings>({
-    blockedTimeSlots: [],
-    defaultBlockedHours: { start: 22, end: 6 }, // Default blocked hours from 10 PM to 6 AM
-    referenceTimezone: 'UTC' // Default to UTC if no timezones
+  const [timelineSettings, setTimelineSettings] = useState<TimelineSettings>(() => {
+    const blockedParam = searchParams.get('b');
+    
+    const blockedTimeSlots = blockedParam 
+      ? parseBlockedHoursParam(blockedParam).map(block => ({
+          ...block,
+          ianaName: undefined // These are global blocks
+        }))
+      : [{ start: 22, end: 6 }];
+    
+    return {
+      blockedTimeSlots,
+      defaultBlockedHours: blockedTimeSlots[0], // Use first block as default
+      referenceTimezone: 'UTC' // This is kept for backward compatibility
+    };
   });
+  
+  // Keep pinnedTimezone state but hide it from UI
+  const [pinnedTimezone, setPinnedTimezone] = useState<string | null>(null);
 
   // Add keyboard shortcut handler
   useEffect(() => {
@@ -45,7 +112,7 @@ export function ZonePalContent() {
     return () => document.removeEventListener('keydown', handleKeyPress);
   }, []);
 
-  // Initialize timezones from URL
+  // Initialize timezones and blocked hours from URL
   useEffect(() => {
     const zParam = searchParams.get('z');
     if (zParam) {
@@ -57,9 +124,56 @@ export function ZonePalContent() {
           ...tz,
           ...getTimeInTimeZone(selectedDate, tz.ianaName)
         }));
+      
+      // Only log timezone initialization once
+      if (!hasLoggedTimezoneInit) {
+        console.log('Initializing timezones from URL:', zones.map(z => z.ianaName));
+        hasLoggedTimezoneInit = true;
+        
+        // Track initial timezone count
+        trackEvent(posthog, EventCategory.TIMEZONE, EventAction.UPDATE, {
+          count: zones.length,
+          timezones: zones.map(z => z.ianaName),
+          source: 'url_init'
+        });
+      }
+      
       setTimeZones(zones);
+      
+      // If we have a pinned timezone, make sure it's the reference
+      if (pinnedTimezone && zones.some(tz => tz.ianaName === pinnedTimezone)) {
+        handleReferenceTimezoneChange(pinnedTimezone);
+      }
     }
-  }, [searchParams, selectedDate]);
+
+    // Read blocked hours from URL
+    const blockedParam = searchParams.get('b');
+    if (blockedParam) {
+      const blockedTimeSlots = parseBlockedHoursParam(blockedParam).map(block => ({
+        ...block,
+        ianaName: undefined // These are global blocks
+      }));
+      
+      // Only log blocked hours initialization once
+      if (!hasLoggedBlockedHoursInit) {
+        console.log('Initializing blocked hours from URL:', blockedTimeSlots);
+        hasLoggedBlockedHoursInit = true;
+        
+        // Track initial blocked hours
+        trackEvent(posthog, EventCategory.BLOCKED_HOURS, EventAction.UPDATE, {
+          count: blockedTimeSlots.length,
+          blocks: blockedTimeSlots.map(slot => `${slot.start}-${slot.end}`),
+          source: 'url_init'
+        });
+      }
+      
+      setTimelineSettings(prev => ({
+        ...prev,
+        blockedTimeSlots,
+        defaultBlockedHours: blockedTimeSlots[0] // Use first block as default
+      }));
+    }
+  }, [searchParams, selectedDate, pinnedTimezone, posthog]);
 
   // Update times every minute
   useEffect(() => {
@@ -91,7 +205,6 @@ export function ZonePalContent() {
 
   const handleAddTimeZone = (newTimeZone: TimeZoneInfo) => {
     setTimeZones(prevZones => {
-      // Check if timezone already exists
       if (prevZones.some(tz => tz.ianaName === newTimeZone.ianaName)) {
         return prevZones;
       }
@@ -100,9 +213,17 @@ export function ZonePalContent() {
         ...getTimeInTimeZone(selectedDate, newTimeZone.ianaName)
       }];
       
-      // Update URL
-      const param = getTimezoneParam(updatedZones);
-      router.push(`/?z=${param}`);
+      // Track timezone added
+      trackEvent(posthog, EventCategory.TIMEZONE, EventAction.ADD, {
+        timezone: newTimeZone.ianaName,
+        timezone_name: newTimeZone.name,
+        total_count: updatedZones.length
+      });
+      
+      // Update URL with both timezone and blocked hours
+      const zParam = getTimezoneParam(updatedZones);
+      const bParam = getBlockedHoursParam(timelineSettings.blockedTimeSlots);
+      router.push(`/?z=${zParam}&b=${bParam}`);
       
       return updatedZones;
     });
@@ -112,12 +233,23 @@ export function ZonePalContent() {
     setTimeZones(prevZones => {
       const updatedZones = prevZones.filter(tz => tz.ianaName !== ianaName);
       
+      // Track timezone removed - this is now handled in the TimezoneCard component
+      // We keep this here for when timezones are removed through other means
+      trackEvent(posthog, EventCategory.TIMEZONE, EventAction.REMOVE, {
+        timezone: ianaName,
+        total_count: updatedZones.length,
+        source: 'parent_component'
+      });
+      
       // Update URL
       if (updatedZones.length > 0) {
-        const param = getTimezoneParam(updatedZones);
-        router.push(`/?z=${param}`);
+        const zParam = getTimezoneParam(updatedZones);
+        const bParam = getBlockedHoursParam(timelineSettings.blockedTimeSlots);
+        router.push(`/?z=${zParam}&b=${bParam}`);
       } else {
-        router.push('/');
+        // If no timezones, keep blocked hours in URL
+        const bParam = getBlockedHoursParam(timelineSettings.blockedTimeSlots);
+        router.push(`/?b=${bParam}`);
       }
       
       return updatedZones;
@@ -126,17 +258,18 @@ export function ZonePalContent() {
 
   const handleSortTimeZones = () => {
     setTimeZones(prevZones => {
-      const sortedZones = [...prevZones].sort((a, b) => {
-        const offsetA = parseInt(a.offset);
-        const offsetB = parseInt(b.offset);
-        return offsetA - offsetB;
+      // Sort by UTC offset
+      const sortedZones = [...prevZones].sort((a, b) => a.utcOffset - b.utcOffset);
+      
+      // Track timezone sorting
+      trackEvent(posthog, EventCategory.TIMEZONE, EventAction.SORT, {
+        count: sortedZones.length
       });
       
-      // Update URL with sorted zones
-      const param = getTimezoneParam(sortedZones);
-      if (sortedZones.length > 0) {
-        router.push(`/?z=${param}`);
-      }
+      // Update URL
+      const zParam = getTimezoneParam(sortedZones);
+      const bParam = getBlockedHoursParam(timelineSettings.blockedTimeSlots);
+      router.push(`/?z=${zParam}&b=${bParam}`);
       
       return sortedZones;
     });
@@ -144,37 +277,182 @@ export function ZonePalContent() {
 
   const handleResetTime = () => {
     setSelectedDate(new Date());
+    
+    // Track time reset
+    trackEvent(posthog, EventCategory.UI, EventAction.RESET, {
+      action: 'reset_time'
+    });
   };
 
   const handleSettingsChange = (newSettings: TimelineSettings) => {
-    // If we have timezones, use the first one as reference
-    if (timeZones.length > 0) {
-      const referenceTimezone = timeZones[0].ianaName;
-      setTimelineSettings({
-        ...newSettings,
-        referenceTimezone // Add this to the settings
-      });
+    // Log only the essential information
+    console.log('Settings change: blocked hours updated to', 
+      newSettings.blockedTimeSlots.map(slot => `${slot.start}-${slot.end}`).join(', '));
+    
+    // Track settings change
+    trackEvent(posthog, EventCategory.BLOCKED_HOURS, EventAction.UPDATE, {
+      count: newSettings.blockedTimeSlots.length,
+      blocks: newSettings.blockedTimeSlots.map(slot => `${slot.start}-${slot.end}`)
+    });
+    
+    // Keep the existing reference timezone
+    const updatedSettings = {
+      ...newSettings,
+      referenceTimezone: timelineSettings.referenceTimezone
+    };
+    
+    // Make sure to set the defaultBlockedHours to the first slot
+    if (newSettings.blockedTimeSlots.length > 0) {
+      updatedSettings.defaultBlockedHours = newSettings.blockedTimeSlots[0];
+    }
+    
+    setTimelineSettings(updatedSettings);
+
+    // Update URL with new blocked hours
+    const searchParams = new URLSearchParams(window.location.search);
+    const zParam = searchParams.get('z');
+    const bParam = getBlockedHoursParam(newSettings.blockedTimeSlots);
+    
+    if (zParam) {
+      router.push(`/?z=${zParam}&b=${bParam}`);
     } else {
-      setTimelineSettings({
-        ...newSettings,
-        referenceTimezone: 'UTC' // Default to UTC if no timezones
-      });
+      router.push(`/?b=${bParam}`);
     }
   };
 
-  // Update settings when first timezone changes
+  // Keep reference timezone functionality but hide it from UI
+  const handleReferenceTimezoneChange = (newReferenceTimezone: string, oldReferenceTimezone?: string) => {
+    // Only log when there's an actual change
+    if (newReferenceTimezone !== (oldReferenceTimezone || timelineSettings.referenceTimezone)) {
+      console.log(`Reference timezone changed: ${oldReferenceTimezone || timelineSettings.referenceTimezone} → ${newReferenceTimezone}`);
+    }
+    
+    // Simply update the reference timezone without converting blocked hours
+    // This ensures that blocked hours remain at the same local time in each timezone
+    setTimelineSettings(prev => ({
+      ...prev,
+      referenceTimezone: newReferenceTimezone
+    }));
+  };
+
+  // Update settings when first timezone is added (but not when sorting)
   useEffect(() => {
-    if (timeZones.length > 0 && (!timelineSettings.referenceTimezone || 
-        timelineSettings.referenceTimezone !== timeZones[0].ianaName)) {
+    // Check if we need to set the reference timezone
+    // We need to update if:
+    // 1. We have timezones but the reference is still UTC (initial state)
+    // 2. We have a pinned timezone that doesn't match the current reference
+    const needsReferenceTimezone = 
+      (timeZones.length > 0 && timelineSettings.referenceTimezone === 'UTC') ||
+      (pinnedTimezone && pinnedTimezone !== timelineSettings.referenceTimezone && 
+       timeZones.some(tz => tz.ianaName === pinnedTimezone));
+    
+    // Only log when there's a change needed to reduce noise
+    if (needsReferenceTimezone) {
+      console.log('Reference timezone needs update:', {
+        current: timelineSettings.referenceTimezone,
+        pinned: pinnedTimezone || 'none',
+        willChangeTo: pinnedTimezone || (timeZones.length > 0 ? timeZones[0].ianaName : 'UTC')
+      });
+    }
+    
+    if (needsReferenceTimezone) {
+      // If we have a pinned timezone, use that as reference
+      if (pinnedTimezone && timeZones.some(tz => tz.ianaName === pinnedTimezone)) {
+        console.log('Setting reference timezone to pinned timezone:', pinnedTimezone);
+        handleReferenceTimezoneChange(pinnedTimezone);
+      } 
+      // Otherwise use the first timezone in the list
+      else if (timeZones.length > 0) {
+        console.log('Setting reference timezone to first timezone:', timeZones[0].ianaName);
+        handleReferenceTimezoneChange(timeZones[0].ianaName);
+      }
+    }
+  }, [timeZones, timelineSettings.referenceTimezone, pinnedTimezone]);
+
+  // Keep the function but don't expose it in the UI
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleTogglePin = (ianaName: string) => {
+    if (pinnedTimezone === ianaName) {
+      // Unpin - but keep the reference timezone as is
+      console.log(`Unpinning timezone: ${ianaName}`);
+      setPinnedTimezone(null);
+      
+      // Track unpin action
+      trackEvent(posthog, EventCategory.TIMEZONE, EventAction.TOGGLE, {
+        action: 'unpin',
+        timezone: ianaName
+      });
+    } else {
+      console.log(`Pinning timezone: ${ianaName} (previous reference: ${timelineSettings.referenceTimezone})`);
+      
+      // Track pin action
+      trackEvent(posthog, EventCategory.TIMEZONE, EventAction.TOGGLE, {
+        action: 'pin',
+        timezone: ianaName,
+        previous_reference: timelineSettings.referenceTimezone
+      });
+      
+      // Pin this timezone and make it the reference
+      setPinnedTimezone(ianaName);
+      
+      // Instead of converting the blocked hours, we'll keep the same local time blocks
+      // but change the reference timezone
       setTimelineSettings(prev => ({
         ...prev,
-        referenceTimezone: timeZones[0].ianaName
+        referenceTimezone: ianaName
       }));
+      
+      // Move this timezone to the top - but only do this once
+      // We're using a separate function to avoid the useEffect triggering another reordering
+      const reorderTimezones = () => {
+        setTimeZones(prevZones => {
+          const pinnedZone = prevZones.find(tz => tz.ianaName === ianaName);
+          if (!pinnedZone) return prevZones;
+          
+          const otherZones = prevZones.filter(tz => tz.ianaName !== ianaName);
+          const newZones = [pinnedZone, ...otherZones];
+          
+          console.log(`Reordering timezones to put ${ianaName} at the top`);
+          
+          // Update URL
+          const zParam = getTimezoneParam(newZones);
+          const bParam = getBlockedHoursParam(timelineSettings.blockedTimeSlots);
+          router.push(`/?z=${zParam}&b=${bParam}`);
+          
+          return newZones;
+        });
+      };
+      
+      // Execute the reordering once
+      reorderTimezones();
     }
-  }, [timeZones, timelineSettings.referenceTimezone]);
+  };
 
   return (
     <div>
+      {/* Debug Panel */}
+      {/* <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+        <h3 className="font-bold text-yellow-800 mb-2">Debug Information</h3>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="bg-white p-2 rounded">
+            <strong>Local Time Blocks:</strong> Enabled
+          </div>
+          <div className="bg-white p-2 rounded">
+            <strong>Reference Timezone:</strong> {timelineSettings.referenceTimezone} (hidden from UI)
+          </div>
+          <div className="bg-white p-2 rounded">
+            <strong>Pinned Timezone:</strong> {pinnedTimezone || 'none'} (hidden from UI)
+          </div>
+          <div className="bg-white p-2 rounded">
+            <strong>Timezones:</strong> {timeZones.map(tz => tz.ianaName).join(', ') || 'none'}
+          </div>
+          <div className="bg-white p-2 rounded">
+            <strong>Blocked Hours:</strong> {timelineSettings.blockedTimeSlots.map(slot => 
+              `${slot.start}-${slot.end}`).join(', ')}
+          </div>
+        </div>
+      </div> */}
+
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-4 mb-8">
         <div className="flex-1 min-w-0">
           <TimezoneSearch 
@@ -240,6 +518,7 @@ export function ZonePalContent() {
             <SettingsDialog 
               settings={timelineSettings}
               onSettingsChange={handleSettingsChange}
+              timeZones={timeZones.map(tz => ({ name: tz.name, ianaName: tz.ianaName }))}
             />
             <Button 
               variant="ghost" 
@@ -254,6 +533,19 @@ export function ZonePalContent() {
         </div>
       </div>
 
+      {/* Local time indicator */}
+      {/* {timeZones.length > 0 && (
+        <div className="mb-6 flex items-center gap-2 text-sm text-gray-500 bg-gray-50 p-3 rounded-md border border-gray-100">
+          <ClockIcon className="h-4 w-4 text-blue-500" />
+          <span>
+            Blocked hours are shown in local time for each timezone
+          </span>
+          <div className="ml-auto text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+            Debug: Using local time blocks (reference timezone functionality is hidden)
+          </div>
+        </div>
+      )} */}
+
       <div className="space-y-6">
         {timeZones.length === 0 ? (
           <div className="text-center py-12">
@@ -261,59 +553,15 @@ export function ZonePalContent() {
             <p className="text-gray-500">Start by adding a timezone from the search box above</p>
           </div>
         ) : (
-          timeZones.map((tz) => (
-            <div key={tz.ianaName} className="bg-white rounded-lg p-6 pr-12 shadow-sm relative group">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={() => handleRemoveTimeZone(tz.ianaName)}
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </Button>
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-2xl font-semibold">{tz.name}</h2>
-                    <WeatherIcon 
-                      city={tz.label}
-                      country={tz.country}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div className="flex flex-col text-sm">
-                    <span className="text-gray-400 text-xs">
-                      {tz.ianaName}
-                      {tz.dstOffset !== tz.utcOffset && " (observes DST)"}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <h3 className="text-3xl font-bold">{tz.time}</h3>
-                  <div className="flex flex-col items-end">
-                    <span className="text-gray-500">{tz.timezone}</span>
-                    <span className="text-gray-400">{tz.date}</span>
-                  </div>
-                </div>
-              </div>
-              {/* Original Timeline (kept for reference) */}
-              {/* <Timeline 
-                ianaName={tz.ianaName}
-                selectedDate={selectedDate}
-                onTimeChange={handleTimeChange}
-              /> */}
-              {/* <div className="mt-8">
-                <h3 className="text-sm font-medium text-gray-500 mb-4">Radix Version (POC):</h3> */}
-                <TimelineRadix
-                  ianaName={tz.ianaName}
-                  selectedDate={selectedDate}
-                  onTimeChange={handleTimeChange}
-                  blockedTimeSlots={timelineSettings.blockedTimeSlots}
-                  defaultBlockedHours={timelineSettings.defaultBlockedHours}
-                  referenceTimezone={timelineSettings.referenceTimezone}
-                />
-              {/* </div> */}
-            </div>
+          timeZones.map((timezone) => (
+            <TimezoneCard
+              key={timezone.ianaName}
+              timezone={timezone}
+              selectedDate={selectedDate}
+              onTimeChange={handleTimeChange}
+              onRemove={handleRemoveTimeZone}
+              timelineSettings={timelineSettings}
+            />
           ))
         )}
       </div>

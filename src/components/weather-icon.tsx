@@ -39,9 +39,17 @@ export function WeatherIcon({ city, country, className }: WeatherIconProps) {
           `/api/weather?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}`
         );
         
-        if (!response.ok) throw new Error('Weather data fetch failed');
+        if (!response.ok) {
+          throw new Error('Failed to fetch weather data');
+        }
         
-        const weatherData: WeatherData = await response.json();
+        const data = await response.json();
+        const weatherData: WeatherData = {
+          temperature: data.temp,
+          description: data.description || data.condition,
+          condition: data.condition,
+          icon: data.icon
+        };
 
         // Update cache
         weatherCache[cacheKey] = {
@@ -51,7 +59,7 @@ export function WeatherIcon({ city, country, className }: WeatherIconProps) {
 
         setWeather(weatherData);
       } catch (error) {
-        console.error('Error fetching weather:', error);
+        // Silent error handling
       } finally {
         setLoading(false);
       }
