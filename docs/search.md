@@ -1,11 +1,19 @@
 # Timezone Search Functionality PRD
 
 ## Overview
-This document outlines the search functionality for the timezone selector, including search terms, ranking priorities, and expected behaviors.
+This document outlines the search functionality for the timezone selector, including search terms, ranking priorities, expected behaviors, and the recent timezones feature.
 
-## Search Terms Priority
+## Search Results Display Order
 
-### Tier 1: Exact Matches (Highest Priority)
+### Tier 0: Recent Timezones (Highest Priority)
+- Previously used timezones that are not currently active
+- Displayed at the top of search results in a separate "Recent" section
+- Sorted by most recently used first
+- Limited to 5 most recent timezones
+- Persisted in localStorage
+- Automatically includes timezones added via URL parameters
+
+### Tier 1: Exact Matches
 1. Exact country name match (e.g., "China" → all cities in China)
 2. Exact country code match (e.g., "CN" → all cities in China)
 3. Exact city name match (e.g., "Hong Kong" → Asia/Hong_Kong)
@@ -50,6 +58,12 @@ This document outlines the search functionality for the timezone selector, inclu
 
 ## Result Grouping
 
+### Recent Timezones Grouping
+- Recent timezones are always displayed at the top in their own group
+- Separated from search results with a visual divider
+- Only shows timezones that are not currently active in the main display
+- Sorted by most recently used first
+
 ### Country Match Grouping
 - When search matches a country:
   1. Group all results under country name
@@ -64,17 +78,55 @@ This document outlines the search functionality for the timezone selector, inclu
 
 ## Display Format
 
+### Recent Timezones
+- City name (primary text)
+- Country name and code (secondary text)
+- Timezone offset (right-aligned)
+- Visual separator between recent timezones and search results
+
 ### Search Results
 - City name (primary text)
 - Country name and code (secondary text)
 - Timezone offset (right-aligned)
+- Visual indication for already selected timezones (disabled state)
 
 ### Additional Information
 - Show DST information when applicable
 - Display full IANA timezone identifier
 - Include GMT/UTC offset
 
+## Recent Timezones Implementation
+
+### Storage
+- Uses localStorage with key 'zonepal_recent_timezones'
+- Stores an array of IANA timezone identifiers
+- Limited to 5 most recent timezones
+- Most recently used timezone is always at the front of the array
+
+### Adding to Recent Timezones
+- When a timezone is selected from search
+- When timezones are loaded from URL parameters
+- Existing entries are moved to the front when reused
+- Duplicates are removed
+
+### Filtering Logic
+- Recent timezones that are already active in the main display are filtered out
+- This ensures users only see options they can actually add
+- The filtering happens dynamically when the search dropdown opens
+
+### Keyboard Interaction
+- Pressing 'K' anywhere in the application opens the search
+- Arrow keys can navigate through recent timezones and search results
+- Enter selects the currently highlighted timezone
+
 ## Testing Scenarios
+
+### Recent Timezones
+- Adding a timezone should add it to recent list
+- Removing a timezone should not remove it from recent list
+- Loading timezones from URL should add them to recent list
+- Recent list should be limited to 5 items
+- Recent list should only show timezones not currently active
 
 ### Country Searches
 - Full country name ("United States")
@@ -89,4 +141,21 @@ This document outlines the search functionality for the timezone selector, inclu
 ### Mixed Searches
 - City and country ("London United Kingdom")
 - Region and city ("Asia Tokyo")
-- Multiple words ("New York United States") 
+- Multiple words ("New York United States")
+
+## Search Algorithm Implementation
+
+### Search Process
+1. Check for empty search - return all timezones
+2. Clean and normalize search terms
+3. Try exact matches first
+4. If no exact matches, try partial matches where all terms are included
+5. If still no matches, try broader matches where any term matches
+6. Group and sort results based on match type
+7. Apply recent timezones at the top of results
+
+### Performance Considerations
+- Memoize search results to prevent unnecessary recalculations
+- Use efficient filtering algorithms for large timezone datasets
+- Implement debouncing for search input to prevent excessive processing
+- Optimize component rendering with React.memo for list items 

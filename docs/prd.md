@@ -9,6 +9,7 @@ A web application that allows users to easily convert times across different tim
 - Shadcn UI
 - React
 - date-fns & date-fns-tz for timezone handling
+- PostHog for analytics tracking
 
 ## Current Features
 
@@ -21,6 +22,7 @@ A web application that allows users to easily convert times across different tim
   - Current time in large format
   - Timezone abbreviation and offset
   - Current date
+  - Weather information with temperature display
 
 #### Timeline Component
 - Visual time selection bar with gradient background
@@ -29,12 +31,15 @@ A web application that allows users to easily convert times across different tim
 - Draggable handle for time selection
 - Border for improved visual affordance
 - Support for both 12-hour and 24-hour time formats
+- Mobile-optimized touch interactions
 
 #### Search Interface
 - Combobox-style search input
 - Dropdown results with timezone information
 - Shows timezone offset for each result
 - Clear button to reset search
+- Recent timezones section at the top of search results
+- Keyboard shortcut ('K') to quickly open search
 
 ### Functional Features
 #### Timezone Management
@@ -44,6 +49,7 @@ A web application that allows users to easily convert times across different tim
 - UTC-based time storage for consistency
 - Timezone conversion using IANA timezone database
 - URL-based state management using query parameters (e.g., `/?z=Asia/Hong_Kong-to-America/New_York`)
+- Modular timezone card components for better code organization
 
 #### Search Capabilities
 - Search by timezone name
@@ -51,6 +57,15 @@ A web application that allows users to easily convert times across different tim
 - Search by region
 - Filtering out already selected timezones
 - Support for IANA timezone identifiers
+- Recent timezones feature that remembers previously used timezones
+- Smart filtering that excludes already active timezones from recent list
+
+#### Analytics Integration
+- PostHog tracking for user interactions
+- Event tracking for timezone additions/removals
+- Tracking for settings changes and UI interactions
+- Consistent event naming convention (category.action)
+- Properties included with events for detailed analysis
 
 #### Testing Case for Search Function
 1. When i type "New ", new york and new salem should be returned
@@ -69,6 +84,7 @@ A web application that allows users to easily convert times across different tim
 - Remove timezones with hover-reveal delete button
 - Sort timezones by offset
 - Preserve timezone selection in session
+- Automatic addition of timezones from URL parameters to recent list
 
 ### Data Management
 #### Time Handling
@@ -97,6 +113,36 @@ A web application that allows users to easily convert times across different tim
 - Timezone data caching
 - Efficient updates without unnecessary rerenders
 - Proper cleanup of event listeners
+- LocalStorage for recent timezones persistence
+
+## Implemented Features (Recently Added)
+
+### Recent Timezones
+- Tracks and displays recently used timezones at the top of search results
+- Persists recent timezones in localStorage
+- Automatically adds timezones from URL parameters to recent list
+- Filters out already active timezones from the recent list
+- Limits to 5 most recent timezones
+- Prioritizes most recently used timezones
+
+### Weather Integration
+- Displays current weather for each timezone location
+- Shows temperature in a user-friendly format
+- Visual weather icons based on current conditions
+- Automatic weather data fetching for added timezones
+
+### Analytics Tracking
+- Comprehensive event tracking for user interactions
+- Consistent naming convention for events (category.action)
+- Tracking for timezone additions, removals, and sorting
+- Monitoring of settings changes and UI interactions
+- Properties included with events for detailed analysis
+
+### Code Modularity
+- Refactored timezone card into separate component
+- Improved code organization and maintainability
+- Enhanced component reusability
+- Better separation of concerns
 
 ## Planned Features
 
@@ -105,18 +151,23 @@ A web application that allows users to easily convert times across different tim
 - DST period indicators
 - Improved mobile responsiveness
 - Keyboard accessibility
+- Dark mode support
+- Customizable card layouts
 
 ### Functional Additions
 - Route parameter support for sharing
-- Local storage for preferences
-- Recent search history
 - Custom timezone labels
+- Timezone grouping and categorization
+- Favorites system for frequently used timezones
+- Timezone comparison view
 
 ### Technical Enhancements
 - Performance optimizations
 - Bundle size optimization
 - Error boundary implementation
 - Loading states
+- Offline support
+- PWA capabilities
 
 ## Success Metrics
 - User engagement time
@@ -124,3 +175,5 @@ A web application that allows users to easily convert times across different tim
 - Conversion accuracy
 - User retention rate
 - Feature usage statistics
+- Analytics event tracking
+- Recent timezone usage patterns
