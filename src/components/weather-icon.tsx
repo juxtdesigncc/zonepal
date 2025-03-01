@@ -45,7 +45,7 @@ export function WeatherIcon({ city, country, className }: WeatherIconProps) {
         
         const data = await response.json();
         const weatherData: WeatherData = {
-          temperature: data.temp,
+          temperature: data.temperature,
           description: data.description || data.condition,
           condition: data.condition,
           icon: data.icon

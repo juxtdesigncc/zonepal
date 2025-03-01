@@ -15,6 +15,7 @@ import { SettingsDialog } from '@/components/settings-dialog';
 import { usePostHog } from 'posthog-js/react';
 import { trackEvent, EventCategory, EventAction } from '@/lib/analytics';
 import { TimezoneCard } from '@/components/timezone-card';
+import { addToRecentTimezones, addMultipleToRecentTimezones } from '@/lib/utils';
 
 // Custom Pin Icon component - kept for future use but currently hidden from UI
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -136,6 +137,9 @@ export function ZonePalContent() {
           timezones: zones.map(z => z.ianaName),
           source: 'url_init'
         });
+        
+        // Add URL timezones to recent list
+        addMultipleToRecentTimezones(zones.map(z => z.ianaName));
       }
       
       setTimeZones(zones);
@@ -219,6 +223,9 @@ export function ZonePalContent() {
         timezone_name: newTimeZone.name,
         total_count: updatedZones.length
       });
+      
+      // Add to recent timezones
+      addToRecentTimezones(newTimeZone.ianaName);
       
       // Update URL with both timezone and blocked hours
       const zParam = getTimezoneParam(updatedZones);
