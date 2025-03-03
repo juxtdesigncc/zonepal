@@ -1,22 +1,28 @@
 import { Suspense } from 'react';
-import { ZonePalContent } from '@/components/zonepal-content';
-import { Metadata } from 'next';
+import { Main } from '@/components/main';
 
-export const metadata: Metadata = {
-  title: 'ZonePal - World Time Zone Converter',
-  description: 'Convert and compare times across different time zones with an intuitive interface.',
+export const metadata = {
+  title: 'ZonePal - Timezone Converter',
+  description: 'A simple timezone converter for remote teams',
 };
 
-export default function ZonePalPage() {
+export default function Home() {
   return (
-    <main className="container mx-auto p-4 max-w-7xl">
-      <Suspense fallback={
-        <div className="text-center py-12">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Loading...</h2>
+    <Suspense fallback={
+      <div className="flex min-h-screen flex-col items-center justify-between p-4 md:p-8">
+        <div className="w-full max-w-7xl">
+          <div className="animate-pulse">
+            <div className="h-8 w-32 bg-gray-200 rounded mb-6"></div>
+            <div className="h-12 w-full bg-gray-200 rounded mb-8"></div>
+            <div className="space-y-6">
+              <div className="h-48 bg-gray-200 rounded"></div>
+              <div className="h-48 bg-gray-200 rounded"></div>
+            </div>
+          </div>
         </div>
-      }>
-        <ZonePalContent />
-      </Suspense>
-    </main>
+      </div>
+    }>
+      <Main />
+    </Suspense>
   );
 } 

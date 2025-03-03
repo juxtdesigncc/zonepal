@@ -1,0 +1,15 @@
+---
+description: Best Programming Practices
+globs: 
+alwaysApply: true
+---
+
+1. Accessibility:
+- Leverage Radix UI's built-in accessibility features
+- Use semantic HTML elements
+- Implement proper ARIA attributes when necessary
+
+2. Best Practices:
+- Follow the DRY (Don't Repeat Yourself) principle
+- Implement proper error handling and fallback UI
+- Use TypeScript for type safety when possible

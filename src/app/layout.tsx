@@ -4,6 +4,13 @@ import localFont from "next/font/local";
 import "./globals.css";
 import config from "../../config";
 import { PostHogProvider } from './providers'
+import { Footer } from "@/components/footer";
+
+const Funnel_Display = localFont({
+  src: "./fonts/FunnelDisplay-VariableFont_wght.ttf",
+  variable: "--font-funnel",
+  weight: "400 700",
+});
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -51,10 +58,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${Funnel_Display.variable} ${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <PostHogProvider>
-        {children}
+          <div className="min-h-screen flex flex-col">
+            <main className="flex-grow">
+              {children}
+            </main>
+            <Footer />
+          </div>
         </PostHogProvider>
       </body>
       <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_MEASUREMENT_ID!} />
