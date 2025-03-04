@@ -62,6 +62,26 @@ export function Main() {
     };
   });
 
+  // Update times every minute and when selectedDate changes
+  useEffect(() => {
+    const updateTimes = () => {
+      setTimeZones(prevZones => 
+        prevZones.map(tz => ({
+          ...tz,
+          ...getTimeInTimeZone(selectedDate, tz.ianaName)
+        }))
+      );
+    };
+
+    // Initial update
+    updateTimes();
+
+    // Set up interval for updates
+    const interval = setInterval(updateTimes, 60000);
+
+    return () => clearInterval(interval);
+  }, [selectedDate]);
+
   // Update URL when timezones or blocked hours change
   useEffect(() => {
     const zParam = timeZones.map(tz => tz.ianaName).join(',');
@@ -74,7 +94,9 @@ export function Main() {
       : `/?b=${bParam}`;
     
     router.push(url);
-  }, [timeZones, timelineSettings, router]);
+  }, [timeZones.map(tz => tz.ianaName).join(','), // Only trigger on timezone list changes
+      timelineSettings.blockedTimeSlots.map(slot => `${slot.start}-${slot.end}`).join(','), // Only trigger on blocked hours changes
+      router]);
 
   // Get blocked hours for grid view
   const blockedHours = useMemo(() => {
@@ -94,7 +116,7 @@ export function Main() {
     });
 
     return blocks;
-  }, [timeZones, timelineSettings]);
+  }, [timeZones, timelineSettings.blockedTimeSlots]);
 
   // Track view changes
   const handleViewChange = (newView: ViewType) => {
@@ -108,8 +130,26 @@ export function Main() {
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
       setSelectedDate(date);
+      // Update all timezone times when date changes
+      setTimeZones(prevZones => 
+        prevZones.map(tz => ({
+          ...tz,
+          ...getTimeInTimeZone(date, tz.ianaName)
+        }))
+      );
       setIsCalendarOpen(false);
     }
+  };
+
+  const handleTimeChange = (newDate: Date) => {
+    setSelectedDate(newDate);
+    // Update all timezone times when time changes
+    setTimeZones(prevZones => 
+      prevZones.map(tz => ({
+        ...tz,
+        ...getTimeInTimeZone(newDate, tz.ianaName)
+      }))
+    );
   };
 
   const handleToggleEditMode = () => {
@@ -122,7 +162,11 @@ export function Main() {
   const handleAddTimeZone = (timezone: TimeZoneInfo) => {
     setTimeZones(prev => {
       if (prev.some(tz => tz.ianaName === timezone.ianaName)) return prev;
-      const updatedZones = [...prev, timezone];
+      const updatedZone = {
+        ...timezone,
+        ...getTimeInTimeZone(selectedDate, timezone.ianaName)
+      };
+      const updatedZones = [...prev, updatedZone];
       
       // Track timezone added
       trackEvent(posthog, EventCategory.TIMEZONE, EventAction.ADD, {
@@ -152,15 +196,22 @@ export function Main() {
 
   const handleSort = () => {
     setTimeZones(prev => {
+      // First sort by UTC offset
       const sortedZones = [...prev].sort((a, b) => a.utcOffset - b.utcOffset);
+      
+      // Then update times for all sorted zones
+      const updatedSortedZones = sortedZones.map(tz => ({
+        ...tz,
+        ...getTimeInTimeZone(selectedDate, tz.ianaName)
+      }));
       
       // Track timezone sorting
       trackEvent(posthog, EventCategory.TIMEZONE, EventAction.SORT, {
-        count: sortedZones.length,
+        count: updatedSortedZones.length,
         view
       });
       
-      return sortedZones;
+      return updatedSortedZones;
     });
   };
 
@@ -289,7 +340,7 @@ export function Main() {
           <TimelineView 
             timeZones={timeZones}
             selectedDate={selectedDate}
-            onTimeChange={handleDateSelect}
+            onTimeChange={handleTimeChange}
             onRemoveTimeZone={handleRemoveTimeZone}
             timelineSettings={timelineSettings}
             isEditMode={isEditMode}
