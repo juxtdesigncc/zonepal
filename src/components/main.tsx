@@ -98,6 +98,44 @@ export function Main() {
       timelineSettings.blockedTimeSlots.map(slot => `${slot.start}-${slot.end}`).join(','), // Only trigger on blocked hours changes
       router]);
 
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input field
+      if (
+        e.target instanceof HTMLInputElement || 
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      
+      // Handle keyboard shortcuts
+      if (e.key.toLowerCase() === 'e' && view === 'cards') {
+        handleToggleEditMode();
+      } else if (e.key.toLowerCase() === 's') {
+        handleSort();
+      } else if (e.key.toLowerCase() === 'r') {
+        handleDateSelect(new Date());
+      } else if (e.key.toLowerCase() === 'k') {
+        // Prevent default to avoid typing 'k' in the search box
+        e.preventDefault();
+        // Focus on the search input
+        if (searchTriggerRef.current) {
+          searchTriggerRef.current.click();
+        }
+      }
+    };
+    
+    // Add event listener
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Clean up
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [view]); // Only re-add listener when view changes
+
   // Get blocked hours for grid view
   const blockedHours = useMemo(() => {
     const blocks: BlockedHours = {};
