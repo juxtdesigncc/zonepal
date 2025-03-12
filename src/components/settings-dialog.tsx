@@ -52,6 +52,16 @@ export function SettingsDialog({ settings, onSettingsChange }: SettingsDialogPro
     }];
   });
 
+  // Reset timeBlocks when settings change or dialog opens
+  React.useEffect(() => {
+    if (open) {
+      setTimeBlocks(settings.blockedTimeSlots.map(slot => ({
+        start: slot.start,
+        end: slot.end
+      })));
+    }
+  }, [settings.blockedTimeSlots, open]);
+
   // Track when dialog opens
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);

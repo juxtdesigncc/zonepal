@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,9 @@ import { cn } from '@/lib/utils';
 import { SettingsDialog } from '@/components/settings-dialog';
 import { TimeZoneInfo, findTimezoneByIana, getTimeInTimeZone } from '@/lib/timezone';
 import { TimelineSettings } from '@/lib/types';
+import { AuthNav } from '@/components/auth-nav';
+import { supabase } from '@/lib/supabase';
+import { User } from '@supabase/supabase-js';
 
 interface BlockedHours {
   [timezone: string]: number[];
@@ -32,20 +35,21 @@ export function Main() {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const [user, setUser] = useState<User | null>(null);
   
   // Initialize timezones from URL
   const [timeZones, setTimeZones] = useState<TimeZoneInfo[]>(() => {
     const ianaNames = searchParams.get('z')?.split(',') || [];
     return ianaNames
-      .map(name => findTimezoneByIana(name))
-      .filter((tz): tz is TimeZoneInfo => tz !== undefined)
-      .map(tz => ({
+      .map((name: string) => findTimezoneByIana(name))
+      .filter((tz: unknown): tz is TimeZoneInfo => tz !== undefined)
+      .map((tz: TimeZoneInfo) => ({
         ...tz,
         ...getTimeInTimeZone(new Date(), tz.ianaName)
       }));
   });
 
-  // Initialize timeline settings from URL
+  // Initialize timeline settings from URL or default values
   const [timelineSettings, setTimelineSettings] = useState<TimelineSettings>(() => {
     const blockedParam = searchParams.get('b');
     const blockedTimeSlots = blockedParam 
@@ -62,6 +66,136 @@ export function Main() {
     };
   });
 
+  // Get initial user and set up auth listener
+  useEffect(() => {
+    const getUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        console.log('Current user:', user);
+        setUser(user);
+        
+        if (user) {
+          // Load last used configuration
+          const { data, error } = await supabase
+            .from('timezone_configs')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('name', 'Last Used Configuration')
+            .single();
+          
+          console.log('Loading last config:', { data, error });
+          
+          if (data && !error) {
+            // Only update if URL doesn't have parameters
+            const hasUrlParams = searchParams.has('z') || searchParams.has('b');
+            if (!hasUrlParams) {
+              // Update timezones
+              const loadedTimezones = data.timezones
+                .map((name: string) => findTimezoneByIana(name))
+                .filter((tz: unknown): tz is TimeZoneInfo => tz !== undefined)
+                .map((tz: TimeZoneInfo) => ({
+                  ...tz,
+                  ...getTimeInTimeZone(new Date(), tz.ianaName)
+                }));
+              setTimeZones(loadedTimezones);
+              
+              // Update blocked hours
+              if (data.blocked_hours) {
+                const blockedTimeSlots = data.blocked_hours
+                  .split(',')
+                  .map((block: string) => {
+                    const [start, end] = block.split('-').map(Number);
+                    return { start, end };
+                  });
+                // Update both blockedTimeSlots and defaultBlockedHours
+                setTimelineSettings(prev => ({
+                  ...prev,
+                  blockedTimeSlots,
+                  defaultBlockedHours: blockedTimeSlots[0] // Update default hours to match loaded configuration
+                }));
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user or config:', error);
+      }
+    };
+
+    getUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [searchParams]);
+
+  // Auto-save configuration when changes are made
+  useEffect(() => {
+    const saveConfig = async () => {
+      console.log('Auto-save triggered', { user, timeZones: timeZones.length });
+      if (!user || timeZones.length === 0) {
+        console.log('Skipping save - no user or timezones');
+        return;
+      }
+
+      try {
+        const blockedHoursParam = timelineSettings.blockedTimeSlots
+          .map(slot => `${slot.start}-${slot.end}`)
+          .join(',');
+
+        // First check if config exists
+        const { data: existingConfig } = await supabase
+          .from('timezone_configs')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('name', 'Last Used Configuration')
+          .single();
+
+        let result;
+        if (existingConfig) {
+          // Update existing config
+          result = await supabase
+            .from('timezone_configs')
+            .update({
+              timezones: timeZones.map((tz: TimeZoneInfo) => tz.ianaName),
+              blocked_hours: blockedHoursParam,
+              is_public: false
+            })
+            .eq('id', existingConfig.id);
+        } else {
+          // Insert new config
+          result = await supabase
+            .from('timezone_configs')
+            .insert({
+              user_id: user.id,
+              name: 'Last Used Configuration',
+              timezones: timeZones.map((tz: TimeZoneInfo) => tz.ianaName),
+              blocked_hours: blockedHoursParam,
+              is_public: false
+            });
+        }
+
+        if (result.error) {
+          console.error('Error saving config:', result.error);
+        } else {
+          console.log('Config saved successfully:', result.data);
+        }
+      } catch (error) {
+        console.error('Error saving configuration:', error);
+      }
+    };
+
+    // Debounce save to avoid too many database calls
+    const timeoutId = setTimeout(saveConfig, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [timeZones, timelineSettings.blockedTimeSlots, user]);
+
   // Update times every minute and when selectedDate changes
   useEffect(() => {
     const updateTimes = () => {
@@ -73,30 +207,47 @@ export function Main() {
       );
     };
 
-    // Initial update
     updateTimes();
-
-    // Set up interval for updates
     const interval = setInterval(updateTimes, 60000);
-
     return () => clearInterval(interval);
-  }, [selectedDate]);
+  }, [selectedDate, timeZones]);
 
   // Update URL when timezones or blocked hours change
   useEffect(() => {
-    const zParam = timeZones.map(tz => tz.ianaName).join(',');
-    const bParam = timelineSettings.blockedTimeSlots
+    const timeZoneString = timeZones.map(tz => tz.ianaName).join(',');
+    const blockedHoursString = timelineSettings.blockedTimeSlots
       .map(slot => `${slot.start}-${slot.end}`)
       .join(',');
     
-    const url = zParam 
-      ? `/?z=${zParam}&b=${bParam}`
-      : `/?b=${bParam}`;
+    const url = timeZoneString 
+      ? `/?z=${timeZoneString}&b=${blockedHoursString}`
+      : `/?b=${blockedHoursString}`;
     
     router.push(url);
-  }, [timeZones.map(tz => tz.ianaName).join(','), // Only trigger on timezone list changes
-      timelineSettings.blockedTimeSlots.map(slot => `${slot.start}-${slot.end}`).join(','), // Only trigger on blocked hours changes
-      router]);
+  }, [timeZones, timelineSettings.blockedTimeSlots, router]);
+
+  const handleToggleEditMode = useCallback(() => {
+    setIsEditMode(prev => !prev);
+    trackEvent(posthog, EventCategory.UI, EventAction.TOGGLE, {
+      action: isEditMode ? 'edit_mode_off' : 'edit_mode_on'
+    });
+  }, [posthog, isEditMode]);
+
+  const handleSort = useCallback(() => {
+    setTimeZones(prevZones => {
+      const sortedZones = [...prevZones].sort((a, b) => {
+        const aTime = new Date(`${a.date} ${a.time}`);
+        const bTime = new Date(`${b.date} ${b.time}`);
+        return aTime.getTime() - bTime.getTime();
+      });
+      
+      trackEvent(posthog, EventCategory.TIMEZONE, EventAction.SORT, {
+        count: sortedZones.length,
+        view
+      });
+      return sortedZones;
+    });
+  }, [posthog, view]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -127,14 +278,9 @@ export function Main() {
       }
     };
     
-    // Add event listener
-    document.addEventListener('keydown', handleKeyDown);
-    
-    // Clean up
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [view]); // Only re-add listener when view changes
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [view, handleSort, handleToggleEditMode]);
 
   // Get blocked hours for grid view
   const blockedHours = useMemo(() => {
@@ -190,13 +336,6 @@ export function Main() {
     );
   };
 
-  const handleToggleEditMode = () => {
-    setIsEditMode(!isEditMode);
-    trackEvent(posthog, EventCategory.UI, EventAction.TOGGLE, {
-      action: isEditMode ? 'edit_mode_off' : 'edit_mode_on'
-    });
-  };
-
   const handleAddTimeZone = (timezone: TimeZoneInfo) => {
     setTimeZones(prev => {
       if (prev.some(tz => tz.ianaName === timezone.ianaName)) return prev;
@@ -229,27 +368,6 @@ export function Main() {
       });
       
       return updatedZones;
-    });
-  };
-
-  const handleSort = () => {
-    setTimeZones(prev => {
-      // First sort by UTC offset
-      const sortedZones = [...prev].sort((a, b) => a.utcOffset - b.utcOffset);
-      
-      // Then update times for all sorted zones
-      const updatedSortedZones = sortedZones.map(tz => ({
-        ...tz,
-        ...getTimeInTimeZone(selectedDate, tz.ianaName)
-      }));
-      
-      // Track timezone sorting
-      trackEvent(posthog, EventCategory.TIMEZONE, EventAction.SORT, {
-        count: updatedSortedZones.length,
-        view
-      });
-      
-      return updatedSortedZones;
     });
   };
 
@@ -370,6 +488,7 @@ export function Main() {
                   <span className="sr-only">{isEditMode ? "Exit edit mode" : "Edit time values"}</span>
                 </Button>
               )}
+              <AuthNav />
             </div>
           </div>
         </div>

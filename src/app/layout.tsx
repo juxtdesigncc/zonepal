@@ -5,6 +5,7 @@ import "./globals.css";
 import config from "../../config";
 import { PostHogProvider } from './providers'
 import { Footer } from "@/components/footer";
+import { Toaster } from '@/components/ui/sonner';
 
 const Funnel_Display = localFont({
   src: "./fonts/FunnelDisplay-VariableFont_wght.ttf",
@@ -67,6 +68,7 @@ export default function RootLayout({
             </main>
             <Footer />
           </div>
+          <Toaster />
         </PostHogProvider>
       </body>
       <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_MEASUREMENT_ID!} />

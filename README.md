@@ -1,36 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ZonePal
+
+A timezone converter for remote teams with card and grid views.
+
+## Features
+
+- Convert and compare times across different time zones
+- Card view for detailed timezone information
+- Grid view for visual time comparison
+- Blocked hours visualization
+- Keyboard shortcuts for quick actions
+- Supabase integration for user authentication and data storage
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Node.js 18+ and npm/yarn
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) for local Supabase development
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Installation
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/zonepal.git
+   cd zonepal
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2. Install dependencies:
+   ```bash
+   npm install
+   # or
+   yarn
+   ```
 
-## Learn More
+3. Set up environment variables:
+   ```bash
+   cp .env.example .env.local
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+4. Start the development server:
+   ```bash
+   npm run dev
+   # or
+   yarn dev
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Setting up Supabase locally
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Install Docker Desktop from [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/)
 
-## Deploy on Vercel
+2. Start Docker Desktop
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+3. Start Supabase locally:
+   ```bash
+   npx supabase start
+   ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+4. This will provide you with local URLs and keys. Update your `.env.local` file with these values.
+
+5. The database schema is defined in `supabase/schema.sql` and will be applied automatically when you start Supabase.
+
+### Keyboard Shortcuts
+
+- `E` - Toggle edit mode (in card view)
+- `S` - Sort timezones by offset
+- `R` - Reset to current time
+- `K` - Open timezone search
+
+## Database Schema
+
+The Supabase database includes the following tables:
+
+- `profiles` - User profile information
+- `timezone_configs` - Saved timezone configurations
+- `user_preferences` - User preferences for the application
+
+## Authentication
+
+The application uses Supabase Auth for user authentication, supporting:
+
+- Email/password authentication
+- Magic link authentication
+- Social authentication (can be configured)
+
+## Deployment
+
+For production deployment, create a Supabase project at [https://supabase.com](https://supabase.com) and update your environment variables with the production credentials.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
