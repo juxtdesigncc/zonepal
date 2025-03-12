@@ -82,22 +82,30 @@ export function Main() {
         
         if (session?.user) {
           // Load last used configuration
-          const { data, error } = await supabase
+          const { data: existingConfig, error: fetchError } = await supabase
             .from('timezone_configs')
             .select('*')
             .eq('user_id', session.user.id)
-            .eq('name', 'Last Used Configuration')
-            .single();
+            .eq('name', 'Last Used Configuration');
           
+          if (fetchError && fetchError.code !== 'PGRST116') {
+            console.error('Error fetching config:', {
+              error: fetchError,
+              user: session?.user?.id
+            });
+            return;
+          }
+
           if (!mounted.current) return;
-          console.log('Loading last config:', { data, error });
-          
-          if (data && !error) {
+
+          // Get the first config if it exists
+          const config = Array.isArray(existingConfig) ? existingConfig[0] : null;
+          if (config) {
             // Only update if URL doesn't have parameters
             const hasUrlParams = searchParams.has('z') || searchParams.has('b');
             if (!hasUrlParams) {
               // Update timezones
-              const loadedTimezones = data.timezones
+              const loadedTimezones = config.timezones
                 .map((name: string) => findTimezoneByIana(name))
                 .filter((tz: unknown): tz is TimeZoneInfo => tz !== undefined)
                 .map((tz: TimeZoneInfo) => ({
@@ -107,8 +115,8 @@ export function Main() {
               setTimeZones(loadedTimezones);
               
               // Update blocked hours
-              if (data.blocked_hours) {
-                const blockedTimeSlots = data.blocked_hours
+              if (config.blocked_hours) {
+                const blockedTimeSlots = config.blocked_hours
                   .split(',')
                   .map((block: string) => {
                     const [start, end] = block.split('-').map(Number);
@@ -161,42 +169,62 @@ export function Main() {
           .map(slot => `${slot.start}-${slot.end}`)
           .join(',');
 
-        // First check if config exists
-        const { data: existingConfig } = await supabase
+        const { data: existingConfigs, error: fetchError } = await supabase
           .from('timezone_configs')
-          .select('id')
+          .select('*')
           .eq('user_id', user.id)
-          .eq('name', 'Last Used Configuration')
-          .single();
+          .eq('name', 'Last Used Configuration');
+
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          console.error('Error fetching config:', {
+            error: fetchError,
+            user: user?.id
+          });
+          return;
+        }
 
         if (!mounted.current) return;
 
         let result;
+        const configData = {
+          timezones: timeZones.map((tz: TimeZoneInfo) => tz.ianaName),
+          blocked_hours: blockedHoursParam,
+          is_public: false,
+          updated_at: new Date().toISOString()
+        };
+
+        const existingConfig = Array.isArray(existingConfigs) ? existingConfigs[0] : null;
         if (existingConfig) {
           // Update existing config
           result = await supabase
             .from('timezone_configs')
-            .update({
-              timezones: timeZones.map((tz: TimeZoneInfo) => tz.ianaName),
-              blocked_hours: blockedHoursParam,
-              is_public: false
-            })
-            .eq('id', existingConfig.id);
+            .update(configData)
+            .eq('id', existingConfig.id)
+            .eq('user_id', user.id);
         } else {
           // Insert new config
           result = await supabase
             .from('timezone_configs')
             .insert({
+              ...configData,
               user_id: user.id,
               name: 'Last Used Configuration',
-              timezones: timeZones.map((tz: TimeZoneInfo) => tz.ianaName),
-              blocked_hours: blockedHoursParam,
-              is_public: false
+              created_at: new Date().toISOString()
             });
         }
 
         if (result.error) {
-          console.error('Error saving config:', result.error);
+          console.error('Error saving config:', {
+            error: result.error,
+            user: user?.id,
+            configId: existingConfig?.id,
+            action: existingConfig ? 'update' : 'insert'
+          });
+          
+          // Check for RLS error
+          if (result.error.code === '42501') {
+            console.error('Row Level Security policy violation. Please check if you have the correct permissions.');
+          }
         } else {
           console.log('Config saved successfully:', result.data);
         }

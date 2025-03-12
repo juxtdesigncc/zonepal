@@ -7,6 +7,11 @@ const nextConfig = {
         hostname: 'cdn.weatherapi.com',
         pathname: '/weather/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+        pathname: '/**',
+      },
     ],
   },
 }
