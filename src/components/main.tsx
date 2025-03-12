@@ -17,7 +17,7 @@ import { SettingsDialog } from '@/components/settings-dialog';
 import { TimeZoneInfo, findTimezoneByIana, getTimeInTimeZone } from '@/lib/timezone';
 import { TimelineSettings } from '@/lib/types';
 import { AuthNav } from '@/components/auth-nav';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@/utils/supabase/client';
 import { User } from '@supabase/supabase-js';
 
 interface BlockedHours {
@@ -27,6 +27,7 @@ interface BlockedHours {
 type ViewType = 'cards' | 'grid';
 
 export function Main() {
+  const mounted = useRef(true);
   const [view, setView] = useState<ViewType>('cards');
   const posthog = usePostHog();
   const router = useRouter();
@@ -36,6 +37,7 @@ export function Main() {
   const [isEditMode, setIsEditMode] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const [user, setUser] = useState<User | null>(null);
+  const supabase = createClient();
   
   // Initialize timezones from URL
   const [timeZones, setTimeZones] = useState<TimeZoneInfo[]>(() => {
@@ -68,9 +70,13 @@ export function Main() {
 
   // Get initial user and set up auth listener
   useEffect(() => {
+    mounted.current = true;
+    
     const getUser = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
+        if (!mounted.current) return;
+        
         console.log('Current user:', user);
         setUser(user);
         
@@ -83,6 +89,7 @@ export function Main() {
             .eq('name', 'Last Used Configuration')
             .single();
           
+          if (!mounted.current) return;
           console.log('Loading last config:', { data, error });
           
           if (data && !error) {
@@ -107,11 +114,10 @@ export function Main() {
                     const [start, end] = block.split('-').map(Number);
                     return { start, end };
                   });
-                // Update both blockedTimeSlots and defaultBlockedHours
                 setTimelineSettings(prev => ({
                   ...prev,
                   blockedTimeSlots,
-                  defaultBlockedHours: blockedTimeSlots[0] // Update default hours to match loaded configuration
+                  defaultBlockedHours: blockedTimeSlots[0]
                 }));
               }
             }
@@ -126,17 +132,22 @@ export function Main() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setUser(session?.user ?? null);
+        if (mounted.current) {
+          setUser(session?.user ?? null);
+        }
       }
     );
 
     return () => {
+      mounted.current = false;
       subscription.unsubscribe();
     };
   }, [searchParams]);
 
   // Auto-save configuration when changes are made
   useEffect(() => {
+    if (!mounted.current) return;
+    
     const saveConfig = async () => {
       console.log('Auto-save triggered', { user, timeZones: timeZones.length });
       if (!user || timeZones.length === 0) {
@@ -156,6 +167,8 @@ export function Main() {
           .eq('user_id', user.id)
           .eq('name', 'Last Used Configuration')
           .single();
+
+        if (!mounted.current) return;
 
         let result;
         if (existingConfig) {
@@ -198,7 +211,10 @@ export function Main() {
 
   // Update times every minute and when selectedDate changes
   useEffect(() => {
+    if (!mounted.current) return;
+
     const updateTimes = () => {
+      if (!mounted.current) return;
       setTimeZones(prevZones => 
         prevZones.map(tz => ({
           ...tz,
@@ -209,7 +225,10 @@ export function Main() {
 
     updateTimes();
     const interval = setInterval(updateTimes, 60000);
-    return () => clearInterval(interval);
+    return () => {
+      mounted.current = false;
+      clearInterval(interval);
+    };
   }, [selectedDate, timeZones]);
 
   // Update URL when timezones or blocked hours change

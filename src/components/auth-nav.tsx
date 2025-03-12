@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@/utils/supabase/client';
 import { User } from '@supabase/supabase-js';
 import {
   DropdownMenu,
@@ -19,17 +19,25 @@ export function AuthNav() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const mounted = useRef(true);
+  const supabase = createClient();
 
   useEffect(() => {
+    mounted.current = true;
+    
     // Get initial user
     const getUser = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
+        if (mounted.current) {
+          setUser(user);
+        }
       } catch (error) {
         console.error('Error fetching user:', error);
       } finally {
-        setLoading(false);
+        if (mounted.current) {
+          setLoading(false);
+        }
       }
     };
 
@@ -38,12 +46,15 @@ export function AuthNav() {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setUser(session?.user ?? null);
+        if (mounted.current) {
+          setUser(session?.user ?? null);
+        }
       }
     );
 
     // Clean up subscription
     return () => {
+      mounted.current = false;
       subscription.unsubscribe();
     };
   }, []);
