@@ -1,53 +1,17 @@
-'use client';
+import { redirect } from 'next/navigation'
+import { createClient } from '@/utils/supabase/server'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import SignOutButton from './SignOutButton'
 
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { useRouter } from 'next/navigation';
-import { User } from '@supabase/supabase-js';
+export default async function ProfilePage() {
+  const supabase = await createClient()
+  const { data, error } = await supabase.auth.getUser()
 
-export default function ProfilePage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
-
-  useEffect(() => {
-    const getUser = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
-      } catch (error) {
-        console.error('Error fetching user:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    getUser();
-  }, []);
-
-  const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut();
-      router.push('/auth');
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8">
-        <p>Loading...</p>
-      </div>
-    );
+  if (error || !data?.user) {
+    redirect('/auth')
   }
 
-  if (!user) {
-    router.push('/auth');
-    return null;
-  }
+  const user = data.user
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8">
@@ -76,9 +40,7 @@ export default function ProfilePage() {
             </div>
           </CardContent>
           <CardFooter>
-            <Button variant="outline" className="w-full" onClick={handleSignOut}>
-              Sign Out
-            </Button>
+            <SignOutButton />
           </CardFooter>
         </Card>
       </div>

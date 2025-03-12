@@ -57,7 +57,7 @@ export function AuthNav() {
       mounted.current = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [supabase.auth]);
 
   const handleSignOut = async () => {
     try {

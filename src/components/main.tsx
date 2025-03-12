@@ -43,15 +43,15 @@ export function Main() {
   const [timeZones, setTimeZones] = useState<TimeZoneInfo[]>(() => {
     const ianaNames = searchParams.get('z')?.split(',') || [];
     return ianaNames
-      .map((name: string) => findTimezoneByIana(name))
-      .filter((tz: unknown): tz is TimeZoneInfo => tz !== undefined)
-      .map((tz: TimeZoneInfo) => ({
+      .map(name => findTimezoneByIana(name))
+      .filter((tz): tz is TimeZoneInfo => tz !== undefined)
+      .map(tz => ({
         ...tz,
         ...getTimeInTimeZone(new Date(), tz.ianaName)
       }));
   });
 
-  // Initialize timeline settings from URL or default values
+  // Initialize timeline settings from URL
   const [timelineSettings, setTimelineSettings] = useState<TimelineSettings>(() => {
     const blockedParam = searchParams.get('b');
     const blockedTimeSlots = blockedParam 
@@ -71,21 +71,21 @@ export function Main() {
   // Get initial user and set up auth listener
   useEffect(() => {
     mounted.current = true;
-    
+
     const getUser = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
         if (!mounted.current) return;
         
-        console.log('Current user:', user);
-        setUser(user);
+        console.log('Current session:', session);
+        setUser(session?.user ?? null);
         
-        if (user) {
+        if (session?.user) {
           // Load last used configuration
           const { data, error } = await supabase
             .from('timezone_configs')
             .select('*')
-            .eq('user_id', user.id)
+            .eq('user_id', session.user.id)
             .eq('name', 'Last Used Configuration')
             .single();
           
@@ -133,6 +133,7 @@ export function Main() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (mounted.current) {
+          console.log('Auth state changed:', session);
           setUser(session?.user ?? null);
         }
       }
@@ -142,7 +143,7 @@ export function Main() {
       mounted.current = false;
       subscription.unsubscribe();
     };
-  }, [searchParams]);
+  }, [searchParams, supabase]);
 
   // Auto-save configuration when changes are made
   useEffect(() => {
@@ -207,7 +208,7 @@ export function Main() {
     // Debounce save to avoid too many database calls
     const timeoutId = setTimeout(saveConfig, 1000);
     return () => clearTimeout(timeoutId);
-  }, [timeZones, timelineSettings.blockedTimeSlots, user]);
+  }, [timeZones, timelineSettings.blockedTimeSlots, user, supabase]);
 
   // Update times every minute and when selectedDate changes
   useEffect(() => {
