@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { login, signup } from '@/app/auth/actions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -8,34 +7,36 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { useFormState } from 'react-dom'
+import { useFormState, useFormStatus } from 'react-dom'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 const initialState = {
   error: null,
   message: null,
+  success: false,
+}
+
+function SubmitButton({ children }: { children: React.ReactNode }) {
+  const { pending } = useFormStatus()
+  return (
+    <Button type="submit" className="w-full" disabled={pending}>
+      {pending ? 'Please wait...' : children}
+    </Button>
+  )
 }
 
 export function AuthForm() {
-  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
   const [loginState, loginAction] = useFormState(login, initialState)
   const [signupState, signupAction] = useFormState(signup, initialState)
 
-  const handleOAuthSignIn = async (provider: 'google') => {
-    setIsLoading(true)
-    try {
-      const res = await fetch('/api/auth/oauth', {
-        method: 'POST',
-        body: JSON.stringify({ provider }),
-      })
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-      window.location.href = data.url
-    } catch (error) {
-      console.error('OAuth error:', error)
-    } finally {
-      setIsLoading(false)
+  useEffect(() => {
+    if (loginState?.success) {
+      router.push('/')
+      router.refresh()
     }
-  }
+  }, [loginState?.success, router])
 
   return (
     <Card>
@@ -46,27 +47,6 @@ export function AuthForm() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-2">
-          <Button 
-            variant="outline" 
-            onClick={() => handleOAuthSignIn('google')}
-            disabled={isLoading}
-          >
-            Continue with Google
-          </Button>
-        </div>
-        
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">
-              Or continue with
-            </span>
-          </div>
-        </div>
-
         <Tabs defaultValue="signin" className="space-y-4">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="signin">Sign In</TabsTrigger>
@@ -81,8 +61,7 @@ export function AuthForm() {
                   id="signin-email"
                   name="email"
                   type="email"
-                  placeholder="you@example.com"
-                  disabled={isLoading}
+                  placeholder="your@email.com"
                   required
                 />
               </div>
@@ -92,13 +71,10 @@ export function AuthForm() {
                   id="signin-password"
                   name="password"
                   type="password"
-                  disabled={isLoading}
                   required
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Signing in...' : 'Sign In'}
-              </Button>
+              <SubmitButton>Sign In</SubmitButton>
               {loginState?.error && (
                 <Alert variant="destructive">
                   <AlertDescription>{loginState.error}</AlertDescription>
@@ -110,13 +86,22 @@ export function AuthForm() {
           <TabsContent value="signup">
             <form action={signupAction} className="space-y-4">
               <div className="grid gap-2">
+                <Label htmlFor="signup-full-name">Full Name</Label>
+                <Input
+                  id="signup-full-name"
+                  name="full_name"
+                  type="text"
+                  placeholder="Enter your full name"
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
                 <Label htmlFor="signup-email">Email</Label>
                 <Input
                   id="signup-email"
                   name="email"
                   type="email"
-                  placeholder="you@example.com"
-                  disabled={isLoading}
+                  placeholder="your@email.com"
                   required
                 />
               </div>
@@ -126,13 +111,10 @@ export function AuthForm() {
                   id="signup-password"
                   name="password"
                   type="password"
-                  disabled={isLoading}
                   required
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Creating account...' : 'Create Account'}
-              </Button>
+              <SubmitButton>Create Account</SubmitButton>
               {signupState?.error && (
                 <Alert variant="destructive">
                   <AlertDescription>{signupState.error}</AlertDescription>

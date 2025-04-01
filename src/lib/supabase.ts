@@ -24,16 +24,9 @@ export type TimezoneConfig = {
   description: string | null;
   timezones: string[];
   blocked_hours: string | null;
+  default_view: 'cards' | 'grid' | null;
   is_public: boolean;
   created_at: string;
-  updated_at: string;
-};
-
-export type UserPreferences = {
-  user_id: string;
-  default_view: 'cards' | 'grid';
-  default_blocked_hours: string;
-  recent_timezones: string[] | null;
   updated_at: string;
 };
 
@@ -71,25 +64,65 @@ export async function getPublicTimezoneConfigs() {
   return data;
 }
 
-export async function updateUserPreferences(userId: string, preferences: Partial<Omit<UserPreferences, 'user_id' | 'updated_at'>>) {
-  const { data, error } = await supabase
-    .from('user_preferences')
-    .update(preferences)
+export async function updateUserPreferences(userId: string, preferences: { default_view?: 'cards' | 'grid', default_blocked_hours?: string, recent_timezones?: string[] }) {
+  const { data: existingConfig } = await supabase
+    .from('timezone_configs')
+    .select('*')
     .eq('user_id', userId)
-    .select()
+    .eq('name', 'Last Used Configuration')
     .single();
-  
-  if (error) throw error;
-  return data;
+
+  if (existingConfig) {
+    const { data, error } = await supabase
+      .from('timezone_configs')
+      .update({
+        default_view: preferences.default_view ?? existingConfig.default_view,
+        blocked_hours: preferences.default_blocked_hours ?? existingConfig.blocked_hours,
+        timezones: preferences.recent_timezones ?? existingConfig.timezones,
+      })
+      .eq('id', existingConfig.id)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  } else {
+    const { data, error } = await supabase
+      .from('timezone_configs')
+      .insert({
+        user_id: userId,
+        name: 'Last Used Configuration',
+        default_view: preferences.default_view,
+        blocked_hours: preferences.default_blocked_hours,
+        timezones: preferences.recent_timezones || [],
+        is_public: false,
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
 }
 
 export async function getUserPreferences(userId: string) {
   const { data, error } = await supabase
-    .from('user_preferences')
+    .from('timezone_configs')
     .select('*')
     .eq('user_id', userId)
+    .eq('name', 'Last Used Configuration')
     .single();
   
   if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "no rows returned"
-  return data;
+  
+  if (data) {
+    return {
+      user_id: data.user_id,
+      default_view: data.default_view,
+      default_blocked_hours: data.blocked_hours,
+      recent_timezones: data.timezones,
+      updated_at: data.updated_at,
+    };
+  }
+  return null;
 } 

@@ -41,7 +41,7 @@ export function Main() {
   
   // Initialize timezones from URL
   const [timeZones, setTimeZones] = useState<TimeZoneInfo[]>(() => {
-    const ianaNames = searchParams.get('z')?.split(',') || [];
+    const ianaNames = searchParams.get('z')?.split(',').filter(Boolean) || [];
     return ianaNames
       .map(name => findTimezoneByIana(name))
       .filter((tz): tz is TimeZoneInfo => tz !== undefined)
@@ -78,61 +78,11 @@ export function Main() {
         if (!mounted.current) return;
         
         console.log('Current session:', session);
-        setUser(session?.user ?? null);
-        
         if (session?.user) {
-          // Load last used configuration
-          const { data: existingConfig, error: fetchError } = await supabase
-            .from('timezone_configs')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .eq('name', 'Last Used Configuration');
-          
-          if (fetchError && fetchError.code !== 'PGRST116') {
-            console.error('Error fetching config:', {
-              error: fetchError,
-              user: session?.user?.id
-            });
-            return;
-          }
-
-          if (!mounted.current) return;
-
-          // Get the first config if it exists
-          const config = Array.isArray(existingConfig) ? existingConfig[0] : null;
-          if (config) {
-            // Only update if URL doesn't have parameters
-            const hasUrlParams = searchParams.has('z') || searchParams.has('b');
-            if (!hasUrlParams) {
-              // Update timezones
-              const loadedTimezones = config.timezones
-                .map((name: string) => findTimezoneByIana(name))
-                .filter((tz: unknown): tz is TimeZoneInfo => tz !== undefined)
-                .map((tz: TimeZoneInfo) => ({
-                  ...tz,
-                  ...getTimeInTimeZone(new Date(), tz.ianaName)
-                }));
-              setTimeZones(loadedTimezones);
-              
-              // Update blocked hours
-              if (config.blocked_hours) {
-                const blockedTimeSlots = config.blocked_hours
-                  .split(',')
-                  .map((block: string) => {
-                    const [start, end] = block.split('-').map(Number);
-                    return { start, end };
-                  });
-                setTimelineSettings(prev => ({
-                  ...prev,
-                  blockedTimeSlots,
-                  defaultBlockedHours: blockedTimeSlots[0]
-                }));
-              }
-            }
-          }
+          setUser(session.user);
         }
       } catch (error) {
-        console.error('Error fetching user or config:', error);
+        console.error('Error fetching user:', error);
       }
     };
 
@@ -151,7 +101,80 @@ export function Main() {
       mounted.current = false;
       subscription.unsubscribe();
     };
-  }, [searchParams, supabase]);
+  }, [supabase]);
+
+  // Load configuration when user changes
+  useEffect(() => {
+    if (!mounted.current || !user) return;
+
+    const loadSavedConfig = async () => {
+      try {
+        const { data: config, error: fetchError } = await supabase
+          .from('timezone_configs')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('name', 'Last Used Configuration')
+          .single();
+          
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          console.error('Error fetching config:', {
+            error: fetchError,
+            user: user.id
+          });
+          return;
+        }
+
+        if (!mounted.current) return;
+
+        if (config) {
+          console.log('Loading saved configuration:', config);
+          
+          // Get timezones from URL if they exist
+          const urlTimezones = searchParams.get('z')?.split(',').filter(Boolean) || [];
+          
+          // Combine URL timezones with saved timezones, removing duplicates
+          const combinedTimezones = Array.from(new Set([...urlTimezones, ...(config.timezones || [])]));
+          
+          // Load and set the timezones
+          const loadedTimezones = combinedTimezones
+            .map((name: string) => findTimezoneByIana(name))
+            .filter((tz: unknown): tz is TimeZoneInfo => tz !== undefined)
+            .map((tz: TimeZoneInfo) => ({
+              ...tz,
+              ...getTimeInTimeZone(selectedDate, tz.ianaName)
+            }));
+          
+          if (loadedTimezones.length > 0) {
+            setTimeZones(loadedTimezones);
+          }
+          
+          // Update blocked hours if no URL parameters
+          if (!searchParams.has('b') && config.blocked_hours) {
+            const blockedTimeSlots = config.blocked_hours
+              .split(',')
+              .map((block: string) => {
+                const [start, end] = block.split('-').map(Number);
+                return { start, end };
+              });
+            setTimelineSettings(prev => ({
+              ...prev,
+              blockedTimeSlots,
+              defaultBlockedHours: blockedTimeSlots[0]
+            }));
+          }
+
+          // Update view preference
+          if (config.default_view) {
+            setView(config.default_view as ViewType);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading saved configuration:', error);
+      }
+    };
+
+    loadSavedConfig();
+  }, [user, searchParams, supabase, selectedDate]);
 
   // Auto-save configuration when changes are made
   useEffect(() => {
@@ -173,33 +196,34 @@ export function Main() {
           .from('timezone_configs')
           .select('*')
           .eq('user_id', user.id)
-          .eq('name', 'Last Used Configuration');
+          .eq('name', 'Last Used Configuration')
+          .single();
 
         if (fetchError && fetchError.code !== 'PGRST116') {
           console.error('Error fetching config:', {
             error: fetchError,
-            user: user?.id
+            user: user.id
           });
           return;
         }
 
         if (!mounted.current) return;
 
-        let result;
         const configData = {
           timezones: timeZones.map((tz: TimeZoneInfo) => tz.ianaName),
           blocked_hours: blockedHoursParam,
+          default_view: view,
           is_public: false,
           updated_at: new Date().toISOString()
         };
 
-        const existingConfig = Array.isArray(existingConfigs) ? existingConfigs[0] : null;
-        if (existingConfig) {
+        let result;
+        if (existingConfigs) {
           // Update existing config
           result = await supabase
             .from('timezone_configs')
             .update(configData)
-            .eq('id', existingConfig.id)
+            .eq('id', existingConfigs.id)
             .eq('user_id', user.id);
         } else {
           // Insert new config
@@ -216,15 +240,10 @@ export function Main() {
         if (result.error) {
           console.error('Error saving config:', {
             error: result.error,
-            user: user?.id,
-            configId: existingConfig?.id,
-            action: existingConfig ? 'update' : 'insert'
+            user: user.id,
+            configId: existingConfigs?.id,
+            action: existingConfigs ? 'update' : 'insert'
           });
-          
-          // Check for RLS error
-          if (result.error.code === '42501') {
-            console.error('Row Level Security policy violation. Please check if you have the correct permissions.');
-          }
         } else {
           console.log('Config saved successfully:', result.data);
         }
@@ -236,7 +255,7 @@ export function Main() {
     // Debounce save to avoid too many database calls
     const timeoutId = setTimeout(saveConfig, 1000);
     return () => clearTimeout(timeoutId);
-  }, [timeZones, timelineSettings.blockedTimeSlots, user, supabase]);
+  }, [timeZones, timelineSettings.blockedTimeSlots, view, user, supabase]);
 
   // Update times every minute and when selectedDate changes
   useEffect(() => {
