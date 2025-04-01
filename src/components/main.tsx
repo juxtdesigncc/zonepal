@@ -15,16 +15,16 @@ import { TimezoneSearch } from '@/components/timezone-search';
 import { cn } from '@/lib/utils';
 import { SettingsDialog } from '@/components/settings-dialog';
 import { TimeZoneInfo, findTimezoneByIana, getTimeInTimeZone } from '@/lib/timezone';
-import { TimelineSettings } from '@/lib/types';
+import { TimelineSettings, BlockedTimeSlot } from '@/lib/types';
 import { AuthNav } from '@/components/auth-nav';
 import { createClient } from '@/utils/supabase/client';
 import { User } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
+import { ViewType } from '@/lib/types';
 
 interface BlockedHours {
   [timezone: string]: number[];
 }
-
-type ViewType = 'cards' | 'grid';
 
 export function Main() {
   const mounted = useRef(true);
@@ -77,12 +77,14 @@ export function Main() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!mounted.current) return;
         
-        console.log('Current session:', session);
+        logger.group('Auth');
+        logger.info('Current session:', session);
         if (session?.user) {
           setUser(session.user);
         }
+        logger.groupEnd();
       } catch (error) {
-        console.error('Error fetching user:', error);
+        logger.error('Error fetching user:', error as Error);
       }
     };
 
@@ -91,7 +93,7 @@ export function Main() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (mounted.current) {
-          console.log('Auth state changed:', session);
+          logger.info('Auth state changed:', session);
           setUser(session?.user ?? null);
         }
       }
@@ -117,7 +119,7 @@ export function Main() {
           .single();
           
         if (fetchError && fetchError.code !== 'PGRST116') {
-          console.error('Error fetching config:', {
+          logger.error('Error fetching config:', {
             error: fetchError,
             user: user.id
           });
@@ -127,7 +129,8 @@ export function Main() {
         if (!mounted.current) return;
 
         if (config) {
-          console.log('Loading saved configuration:', config);
+          logger.group('Config');
+          logger.info('Loading saved configuration:', config);
           
           // Get timezones from URL if they exist
           const urlTimezones = searchParams.get('z')?.split(',').filter(Boolean) || [];
@@ -167,9 +170,11 @@ export function Main() {
           if (config.default_view) {
             setView(config.default_view as ViewType);
           }
+
+          logger.groupEnd();
         }
       } catch (error) {
-        console.error('Error loading saved configuration:', error);
+        logger.error('Error loading saved configuration:', error as Error);
       }
     };
 
@@ -181,15 +186,17 @@ export function Main() {
     if (!mounted.current) return;
     
     const saveConfig = async () => {
-      console.log('Auto-save triggered', { user, timeZones: timeZones.length });
-      if (!user || timeZones.length === 0) {
-        console.log('Skipping save - no user or timezones');
+      logger.group('Auto-save');
+      logger.debug('Auto-save triggered', { user, timeZones: timeZones.length });
+      if (!user) {
+        logger.info('Skipping save - no user');
+        logger.groupEnd();
         return;
       }
 
       try {
         const blockedHoursParam = timelineSettings.blockedTimeSlots
-          .map(slot => `${slot.start}-${slot.end}`)
+          .map((slot: BlockedTimeSlot) => `${slot.start}-${slot.end}`)
           .join(',');
 
         const { data: existingConfigs, error: fetchError } = await supabase
@@ -200,14 +207,18 @@ export function Main() {
           .single();
 
         if (fetchError && fetchError.code !== 'PGRST116') {
-          console.error('Error fetching config:', {
+          logger.error('Error fetching config:', {
             error: fetchError,
             user: user.id
           });
+          logger.groupEnd();
           return;
         }
 
-        if (!mounted.current) return;
+        if (!mounted.current) {
+          logger.groupEnd();
+          return;
+        }
 
         const configData = {
           timezones: timeZones.map((tz: TimeZoneInfo) => tz.ianaName),
@@ -217,6 +228,8 @@ export function Main() {
           updated_at: new Date().toISOString()
         };
 
+        logger.debug('Saving config:', { configData, existingConfig: existingConfigs?.id });
+
         let result;
         if (existingConfigs) {
           // Update existing config
@@ -224,7 +237,9 @@ export function Main() {
             .from('timezone_configs')
             .update(configData)
             .eq('id', existingConfigs.id)
-            .eq('user_id', user.id);
+            .eq('user_id', user.id)
+            .select()
+            .single();
         } else {
           // Insert new config
           result = await supabase
@@ -234,22 +249,29 @@ export function Main() {
               user_id: user.id,
               name: 'Last Used Configuration',
               created_at: new Date().toISOString()
-            });
+            })
+            .select()
+            .single();
         }
 
         if (result.error) {
-          console.error('Error saving config:', {
+          logger.error('Error saving config:', {
             error: result.error,
             user: user.id,
             configId: existingConfigs?.id,
             action: existingConfigs ? 'update' : 'insert'
           });
         } else {
-          console.log('Config saved successfully:', result.data);
+          logger.info('Config saved successfully:', {
+            id: result.data.id,
+            timezones: result.data.timezones,
+            action: existingConfigs ? 'update' : 'insert'
+          });
         }
       } catch (error) {
-        console.error('Error saving configuration:', error);
+        logger.error('Error saving configuration:', error as Error);
       }
+      logger.groupEnd();
     };
 
     // Debounce save to avoid too many database calls

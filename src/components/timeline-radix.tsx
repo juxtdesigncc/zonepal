@@ -6,6 +6,7 @@ import { BlockedTimeSlot } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { usePostHog } from 'posthog-js/react'
 import { trackEvent, EventCategory, EventAction } from '@/lib/analytics'
+import { logger } from '@/lib/logger'
 
 // Create sets to track logged items across all component instances
 // This helps reduce duplicate logs
@@ -200,7 +201,7 @@ export function TimelineRadix({
     // Only log for specific hours (0, 6, 12, 18) to reduce noise
     // AND only log the first check for each hour/timezone combination
     if ([0, 6, 12, 18].includes(hour) && !loggedHourChecks.has(hourCheckKey)) {
-      console.log(`Checking if hour ${hour} is active in ${ianaName} (local time)`);
+      logger.debug(`Checking if hour ${hour} is active in ${ianaName} (local time)`);
       loggedHourChecks.add(hourCheckKey);
     }
     

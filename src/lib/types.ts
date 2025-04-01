@@ -11,4 +11,6 @@ export interface TimelineSettings {
     end: number;
   };
   referenceTimezone: string; // The timezone to use as reference for blocked hours
-} 
+}
+
+export type ViewType = 'cards' | 'grid'; 
