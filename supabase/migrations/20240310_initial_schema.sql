@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS timezone_configs (
   description TEXT,
   timezones TEXT[] NOT NULL,
   blocked_hours TEXT,
+  default_view TEXT DEFAULT 'cards',
   is_public BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
@@ -83,11 +84,17 @@ CREATE POLICY "Users can update their own preferences" ON user_preferences
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Create user profile
   INSERT INTO public.profiles (id, full_name, avatar_url)
   VALUES (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'avatar_url');
   
+  -- Create user preferences with defaults
   INSERT INTO public.user_preferences (user_id)
   VALUES (new.id);
+  
+  -- Create default timezone configuration with empty timezones
+  INSERT INTO public.timezone_configs (user_id, name, timezones)
+  VALUES (new.id, 'Last Used Configuration', ARRAY[]::text[]);
   
   RETURN new;
 END;

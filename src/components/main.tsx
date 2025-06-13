@@ -183,13 +183,52 @@ export function Main() {
 
   // Auto-save configuration when changes are made
   useEffect(() => {
-    if (!mounted.current) return;
+    if (!mounted.current) {
+      logger.debug('Skipping database sync - component not mounted');
+      return;
+    }
     
     const saveConfig = async () => {
-      logger.group('Auto-save');
-      logger.debug('Auto-save triggered', { user, timeZones: timeZones.length });
-      if (!user) {
-        logger.info('Skipping save - no user');
+      logger.group('Database - Sync Operation');
+      logger.debug('Starting database sync', { 
+        user_id: user?.id, 
+        timezone_count: timeZones.length,
+        has_session: !!user,
+        mounted: mounted.current,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Check session and RLS status
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        logger.error('Session error:', {
+          error: sessionError,
+          error_message: sessionError.message,
+          timestamp: new Date().toISOString()
+        });
+        logger.groupEnd();
+        return;
+      }
+      
+      if (!session) {
+        logger.error('No active session found', {
+          has_user: !!user,
+          user_id: user?.id,
+          timestamp: new Date().toISOString()
+        });
+        logger.groupEnd();
+        return;
+      }
+
+      // Ensure we have both a user and timezones before attempting to save
+      if (!user?.id || timeZones.length === 0) {
+        logger.info('Skipping database sync - no user or no timezones', { 
+          has_user: !!user?.id, 
+          user_id: user?.id,
+          timezone_count: timeZones.length,
+          session_user_id: session?.user?.id,
+          timestamp: new Date().toISOString()
+        });
         logger.groupEnd();
         return;
       }
@@ -199,28 +238,9 @@ export function Main() {
           .map((slot: BlockedTimeSlot) => `${slot.start}-${slot.end}`)
           .join(',');
 
-        const { data: existingConfigs, error: fetchError } = await supabase
-          .from('timezone_configs')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('name', 'Last Used Configuration')
-          .single();
-
-        if (fetchError && fetchError.code !== 'PGRST116') {
-          logger.error('Error fetching config:', {
-            error: fetchError,
-            user: user.id
-          });
-          logger.groupEnd();
-          return;
-        }
-
-        if (!mounted.current) {
-          logger.groupEnd();
-          return;
-        }
-
         const configData = {
+          user_id: user.id,
+          name: 'Last Used Configuration',
           timezones: timeZones.map((tz: TimeZoneInfo) => tz.ianaName),
           blocked_hours: blockedHoursParam,
           default_view: view,
@@ -228,55 +248,94 @@ export function Main() {
           updated_at: new Date().toISOString()
         };
 
-        logger.debug('Saving config:', { configData, existingConfig: existingConfigs?.id });
+        logger.info('Preparing database sync:', { 
+          operation_type: 'save_config',
+          payload: configData,
+          timestamp: new Date().toISOString()
+        });
 
-        let result;
-        if (existingConfigs) {
-          // Update existing config
-          result = await supabase
-            .from('timezone_configs')
-            .update(configData)
-            .eq('id', existingConfigs.id)
-            .eq('user_id', user.id)
-            .select()
-            .single();
-        } else {
-          // Insert new config
-          result = await supabase
-            .from('timezone_configs')
-            .insert({
-              ...configData,
+        // Always try to insert first, then fall back to update if it exists
+        const { data: insertResult, error: insertError } = await supabase
+          .from('timezone_configs')
+          .insert(configData)
+          .select()
+          .single();
+
+        if (insertError) {
+          if (insertError.code === '23505') { // Unique violation
+            // Config exists, update it
+            const { data: updateResult, error: updateError } = await supabase
+              .from('timezone_configs')
+              .update(configData)
+              .eq('user_id', user.id)
+              .eq('name', 'Last Used Configuration')
+              .select()
+              .single();
+
+            if (updateError) {
+              logger.error('Database update failed:', {
+                error: updateError,
+                error_message: updateError.message,
+                error_code: updateError.code,
+                details: updateError.details,
+                hint: updateError.hint,
+                user_id: user.id,
+                action: 'update',
+                timezones: configData.timezones,
+                timestamp: new Date().toISOString()
+              });
+              logger.groupEnd();
+              return;
+            }
+
+            logger.info('Database sync completed (update):', {
+              config_id: updateResult.id,
+              timezones: updateResult.timezones,
+              timezone_count: updateResult.timezones.length,
+              user_id: updateResult.user_id,
+              timestamp: new Date().toISOString()
+            });
+          } else {
+            logger.error('Database insert failed:', {
+              error: insertError,
+              error_message: insertError.message,
+              error_code: insertError.code,
+              details: insertError.details,
+              hint: insertError.hint,
               user_id: user.id,
-              name: 'Last Used Configuration',
-              created_at: new Date().toISOString()
-            })
-            .select()
-            .single();
-        }
-
-        if (result.error) {
-          logger.error('Error saving config:', {
-            error: result.error,
-            user: user.id,
-            configId: existingConfigs?.id,
-            action: existingConfigs ? 'update' : 'insert'
-          });
+              action: 'insert',
+              timezones: configData.timezones,
+              timestamp: new Date().toISOString()
+            });
+          }
         } else {
-          logger.info('Config saved successfully:', {
-            id: result.data.id,
-            timezones: result.data.timezones,
-            action: existingConfigs ? 'update' : 'insert'
+          logger.info('Database sync completed (insert):', {
+            config_id: insertResult.id,
+            timezones: insertResult.timezones,
+            timezone_count: insertResult.timezones.length,
+            user_id: insertResult.user_id,
+            timestamp: new Date().toISOString()
           });
         }
       } catch (error) {
-        logger.error('Error saving configuration:', error as Error);
+        logger.error('Database sync error:', {
+          error: error as Error,
+          error_message: (error as Error).message,
+          user_id: user?.id,
+          timestamp: new Date().toISOString()
+        });
       }
       logger.groupEnd();
     };
 
     // Debounce save to avoid too many database calls
-    const timeoutId = setTimeout(saveConfig, 1000);
-    return () => clearTimeout(timeoutId);
+    const timeoutId = setTimeout(saveConfig, 2000);
+    return () => {
+      clearTimeout(timeoutId);
+      logger.debug('Cleanup: Database sync cancelled', {
+        timestamp: new Date().toISOString()
+      });
+    };
   }, [timeZones, timelineSettings.blockedTimeSlots, view, user, supabase]);
 
   // Update times every minute and when selectedDate changes
@@ -425,16 +484,37 @@ export function Main() {
     );
   };
 
-  const handleAddTimeZone = (timezone: TimeZoneInfo) => {
+  const handleAddTimeZone = useCallback((timezone: TimeZoneInfo) => {
     setTimeZones(prev => {
-      if (prev.some(tz => tz.ianaName === timezone.ianaName)) return prev;
+      // Early return if timezone already exists
+      if (prev.some(tz => tz.ianaName === timezone.ianaName)) {
+        logger.debug('Timezone already exists, skipping:', {
+          timezone: timezone.ianaName,
+          existing_count: prev.length,
+          timestamp: new Date().toISOString()
+        });
+        return prev;
+      }
+
+      // Create updated timezone with current time
       const updatedZone = {
         ...timezone,
         ...getTimeInTimeZone(selectedDate, timezone.ianaName)
       };
       const updatedZones = [...prev, updatedZone];
       
-      // Track timezone added
+      // Track frontend timezone changes (only logged once per actual addition)
+      logger.group('Frontend - Timezone Change');
+      logger.info('Adding timezone:', {
+        action: 'add',
+        timezone: timezone.ianaName,
+        total_count: updatedZones.length,
+        view,
+        timestamp: new Date().toISOString()
+      });
+      logger.groupEnd();
+      
+      // Track analytics (only tracked once per actual addition)
       trackEvent(posthog, EventCategory.TIMEZONE, EventAction.ADD, {
         timezone: timezone.ianaName,
         total_count: updatedZones.length,
@@ -443,13 +523,24 @@ export function Main() {
       
       return updatedZones;
     });
-  };
+  }, [posthog, selectedDate, view]);
 
   const handleRemoveTimeZone = (ianaName: string) => {
     setTimeZones(prev => {
       const updatedZones = prev.filter(tz => tz.ianaName !== ianaName);
       
-      // Track timezone removed
+      // Track frontend timezone changes
+      logger.group('Frontend - Timezone Change');
+      logger.info('Removing timezone:', {
+        action: 'remove',
+        timezone: ianaName,
+        total_count: updatedZones.length,
+        view,
+        timestamp: new Date().toISOString()
+      });
+      logger.groupEnd();
+      
+      // Track analytics
       trackEvent(posthog, EventCategory.TIMEZONE, EventAction.REMOVE, {
         timezone: ianaName,
         total_count: updatedZones.length,
