@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils';
 import { SettingsDialog } from '@/components/settings-dialog';
 import { TimeZoneInfo, findTimezoneByIana, getTimeInTimeZone } from '@/lib/timezone';
 import { TimelineSettings } from '@/lib/types';
+import { EmptyState } from '@/components/empty-state';
+import { AppFooter } from '@/components/app-footer';
 
 interface BlockedHours {
   [timezone: string]: number[];
@@ -265,25 +267,34 @@ export function Main() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-4 md:p-8">
-      <div className="w-full max-w-7xl">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">ZonePal</h1>
-          <div className="flex items-center space-x-2">
+    <main className="flex min-h-screen flex-col items-center p-4 md:p-8">
+      <div className="w-full max-w-7xl flex-1 flex flex-col">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">ZonePal</h1>
+            <p className="text-sm text-gray-500 mt-1">Time zone converter for remote teams</p>
+          </div>
+          <div className="flex items-center bg-gray-100 rounded-lg p-1">
             <Button
-              variant="outline"
+              variant={view === 'cards' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => handleViewChange('cards')}
-              className={view === 'cards' ? 'bg-primary text-primary-foreground' : ''}
+              className={cn(
+                "transition-all",
+                view === 'cards' ? 'shadow-sm' : 'hover:bg-transparent'
+              )}
             >
               <ListBulletIcon className="h-4 w-4 mr-1" />
               Cards
             </Button>
             <Button
-              variant="outline"
+              variant={view === 'grid' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => handleViewChange('grid')}
-              className={view === 'grid' ? 'bg-primary text-primary-foreground' : ''}
+              className={cn(
+                "transition-all",
+                view === 'grid' ? 'shadow-sm' : 'hover:bg-transparent'
+              )}
             >
               <Squares2X2Icon className="h-4 w-4 mr-1" />
               Grid
@@ -291,16 +302,17 @@ export function Main() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-4 mb-8">
-          <div className="flex-1 min-w-0">
-            <TimezoneSearch 
-              onSelect={handleAddTimeZone}
-              selectedTimezones={timeZones.map(tz => tz.ianaName)}
-              triggerRef={searchTriggerRef}
-            />
-          </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="relative z-40">
+        <div className="bg-gradient-to-r from-gray-50 to-white p-6 rounded-2xl border border-gray-100 mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <TimezoneSearch 
+                onSelect={handleAddTimeZone}
+                selectedTimezones={timeZones.map(tz => tz.ianaName)}
+                triggerRef={searchTriggerRef}
+              />
+            </div>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="relative z-40">
               <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                 <PopoverTrigger asChild>
                   <Button 
@@ -340,8 +352,8 @@ export function Main() {
                   />
                 </PopoverContent>
               </Popover>
-            </div>
-            <div className="flex gap-2">
+              </div>
+              <div className="flex gap-2">
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -370,11 +382,15 @@ export function Main() {
                   <span className="sr-only">{isEditMode ? "Exit edit mode" : "Edit time values"}</span>
                 </Button>
               )}
+              </div>
             </div>
           </div>
         </div>
 
-        {view === 'cards' ? (
+        <div className="flex-1">
+          {timeZones.length === 0 ? (
+            <EmptyState onAddTimezone={() => searchTriggerRef.current?.click()} />
+          ) : view === 'cards' ? (
           <TimelineView 
             timeZones={timeZones}
             selectedDate={selectedDate}
@@ -385,11 +401,14 @@ export function Main() {
           />
         ) : (
           <TableView
-            timezones={timeZones.length > 0 ? timeZones.map(tz => tz.ianaName) : ['UTC']}
+            timezones={timeZones.map(tz => tz.ianaName)}
             date={selectedDate}
             blockedHours={blockedHours}
           />
-        )}
+          )}
+        </div>
+        
+        <AppFooter />
       </div>
     </main>
   );
