@@ -38,3 +38,5 @@ next-env.d.ts
 # astro
 .astro
 .cursor/mcp.json
+
+public
