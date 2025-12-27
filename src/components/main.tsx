@@ -34,6 +34,7 @@ export function Main() {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const hasDetectedTimezone = useRef(false);
   
   // Initialize timezones from URL
   const [timeZones, setTimeZones] = useState<TimeZoneInfo[]>(() => {
@@ -46,6 +47,42 @@ export function Main() {
         ...getTimeInTimeZone(new Date(), tz.ianaName)
       }));
   });
+
+  // Detect and add user's timezone on first visit (when no timezones in URL)
+  useEffect(() => {
+    // Only detect if:
+    // 1. No timezones in URL params (first visit)
+    // 2. We haven't already detected the timezone
+    // 3. We're on the client side (browser)
+    const hasTimezoneInUrl = searchParams.get('z');
+    if (!hasTimezoneInUrl && !hasDetectedTimezone.current && typeof window !== 'undefined') {
+      try {
+        const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const timezoneInfo = findTimezoneByIana(userTimezone);
+        
+        if (timezoneInfo) {
+          hasDetectedTimezone.current = true;
+          const timezoneWithTime = {
+            ...timezoneInfo,
+            ...getTimeInTimeZone(new Date(), timezoneInfo.ianaName)
+          };
+          
+          setTimeZones([timezoneWithTime]);
+          
+          // Track timezone auto-detection
+          if (posthog) {
+            trackEvent(posthog, EventCategory.TIMEZONE, EventAction.ADD, {
+              timezone: timezoneInfo.ianaName,
+              source: 'auto_detected',
+              total_count: 1
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error detecting user timezone:', error);
+      }
+    }
+  }, [searchParams, posthog]);
 
   // Initialize timeline settings from URL
   const [timelineSettings, setTimelineSettings] = useState<TimelineSettings>(() => {

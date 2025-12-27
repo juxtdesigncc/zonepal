@@ -1,18 +1,25 @@
-import Link from 'next/link';
-
 export function Footer() {
   return (
-    <footer className="mt-12 pt-6 border-t border-gray-200">
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-gray-500">
+    <footer className="mt-auto py-2 md:py-4 border-t border-border">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-muted-foreground px-4">
         <div>
-          Created by <a href="https://x.com/desktopofsamuel" target="_blank" rel="noopener noreferrer" className="text-brand hover:underline">@desktopofsamuel</a>
+          Created with love in <span className="text-primary">Hong Kong</span>
         </div>
         <div className="flex items-center gap-4">
-          <Link href="https://buymeacoffee.com/desktopofsamuel" target="_blank" rel="noopener noreferrer" className="text-brand hover:underline">Buy me a coffee</Link>
-          <a href="/changelog" className="text-brand hover:underline">Changelog</a>
-          <span>© {new Date().getFullYear()}</span>
+          {/*<a
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+            href="https://buymeacoffee.com/desktopofsamuel"
+          >
+            Buy me a coffee
+          </a>
+          */}
+ {/*} <a href="/changelog" className="text-brand hover:underline">Changelog</a>*/}
+          <span>© 2025 All Rights Reserved</span>
         </div>
       </div>
     </footer>
   );
-} 
+}
+

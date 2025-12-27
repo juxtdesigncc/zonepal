@@ -39,7 +39,7 @@ export function AppFooter() {
         <p className="text-sm text-gray-500">
           Pro tip: Use keyboard shortcuts for faster navigation
         </p>
-        <div className="flex flex-wrap justify-center gap-3 mt-3">
+        <div className="flex flex-wrap justify-center items-center gap-3 mt-3">
           <kbd className="px-2 py-1 text-xs bg-gray-100 border border-gray-300 rounded">K</kbd>
           <span className="text-xs text-gray-500">Search</span>
           <kbd className="px-2 py-1 text-xs bg-gray-100 border border-gray-300 rounded">S</kbd>
